@@ -1,0 +1,6 @@
+{
+  "name": "Kinetic Canvas",
+  "description": "Spatial board knowledge studio with sub-pixel bezier thread routing, folder spaces, Ask Gemini AI assistant, and executive focus editor.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Spatial network thread bezier curves -->
+    <path
+        android:pathData="M32,38 C42,42 46,62 60,68"
+        android:strokeWidth="3.2"
+        android:strokeColor="#6366F1"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M60,68 C70,72 74,48 76,40"
+        android:strokeWidth="3.2"
+        android:strokeColor="#8B5CF6"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M32,38 C46,28 66,28 76,40"
+        android:strokeWidth="2.0"
+        android:strokeColor="#38BDF8"
+        android:strokeAlpha="0.6"
+        android:strokeLineCap="round" />
+
+    <!-- Graph Node 1 (Amber / Keep note card) -->
+    <path
+        android:pathData="M24,30 L40,30 A4,4 0 0,1 44,34 L44,46 A4,4 0 0,1 40,50 L24,50 A4,4 0 0,1 20,46 L20,34 A4,4 0 0,1 24,30 Z"
+        android:fillColor="#F59E0B" />
+    <!-- Node 1 spine -->
+    <path
+        android:pathData="M20,34 L20,46"
+        android:strokeWidth="3"
+        android:strokeColor="#D97706" />
+
+    <!-- Graph Node 2 (Rose / Concept card) -->
+    <path
+        android:pathData="M52,60 L68,60 A4,4 0 0,1 72,64 L72,76 A4,4 0 0,1 68,80 L52,80 A4,4 0 0,1 48,76 L48,64 A4,4 0 0,1 52,60 Z"
+        android:fillColor="#EC4899" />
+    <!-- Node 2 spine -->
+    <path
+        android:pathData="M48,64 L48,76"
+        android:strokeWidth="3"
+        android:strokeColor="#BE185D" />
+
+    <!-- Graph Node 3 (Emerald / Obsidian node) -->
+    <path
+        android:pathData="M70,32 L82,32 A4,4 0 0,1 86,36 L86,48 A4,4 0 0,1 82,52 L70,52 A4,4 0 0,1 66,48 L66,36 A4,4 0 0,1 70,32 Z"
+        android:fillColor="#10B981" />
+    <!-- Node 3 spine -->
+    <path
+        android:pathData="M66,36 L66,48"
+        android:strokeWidth="3"
+        android:strokeColor="#059669" />
+
+    <!-- Stylus / Inking Pen drawing across center -->
+    <path
+        android:pathData="M78,22 L86,30 L46,70 L38,70 L38,62 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="38"
+                android:startY="70"
+                android:endX="86"
+                android:endY="22"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#38BDF8" />
+                <item android:offset="0.7" android:color="#FFFFFF" />
+                <item android:offset="1.0" android:color="#E0E7FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Stylus Nib tip -->
+    <path
+        android:pathData="M38,62 L46,70 L36,72 Z"
+        android:fillColor="#0284C7" />
+    <!-- Glowing nib spark -->
+    <path
+        android:pathData="M35,73m-2.5,0a2.5,2.5 0,1,1 5,0a2.5,2.5 0,1,1 -5,0"
+        android:fillColor="#67E8F9" />
+</vector>
