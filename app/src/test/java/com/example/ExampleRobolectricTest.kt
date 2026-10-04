@@ -16,6 +16,7 @@ class ExampleRobolectricTest {
   fun `read string from context`() {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val appName = context.getString(R.string.app_name)
-    assertEquals("Kinetic Canvas EXP", appName)
+    // The EXP identity is carried by the application ID/version suffix; the shared app label remains stable.
+    assertEquals("Kinetic Canvas", appName)
   }
 }
