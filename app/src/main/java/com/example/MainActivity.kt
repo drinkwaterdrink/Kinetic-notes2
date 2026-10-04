@@ -133,6 +133,9 @@ fun KineticCanvasApp(viewModel: NotesViewModel) {
             .distinctBy { it.lowercase() }
             .sortedBy { it.lowercase() }
     }
+    val visibleGraphNotes = remember(allNotes, uiState.unlockedNoteIds) {
+        allNotes.filter { !it.isLocked || it.id in uiState.unlockedNoteIds }
+    }
 
     var showCreateDialog by remember { mutableStateOf(false) }
     var folderMenuExpanded by remember { mutableStateOf(false) }
@@ -236,7 +239,7 @@ fun KineticCanvasApp(viewModel: NotesViewModel) {
                     ObsidianGraphView(
                         modifier = viewAreaModifier,
                         graphState = graphState,
-                        notes = allNotes,
+                        notes = visibleGraphNotes,
                         onNodeDrag = { id, offset ->
                             viewModel.graphEngine.onNodeDrag(id, offset)
                         },

@@ -5,6 +5,7 @@ import com.example.data.local.NoteEntity
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -53,15 +54,22 @@ class GeminiService {
     private val requestAdapter = moshi.adapter(GeminiRequest::class.java)
     private val responseAdapter = moshi.adapter(GeminiResponse::class.java)
 
+    /**
+     * A provider call is successful only when the configured provider returns usable content.
+     * Missing configuration, transport errors, empty responses and HTTP failures are explicit
+     * failures; the app must never turn them into plausible-looking demo prose.
+     */
     suspend fun generateContent(prompt: String): Result<String> = withContext(Dispatchers.IO) {
         val apiKey = try {
             BuildConfig.GEMINI_API_KEY
-        } catch (e: Throwable) {
+        } catch (_: Throwable) {
             ""
         }
 
         if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY") {
-            return@withContext Result.success(getSimulatedResponse(prompt))
+            return@withContext Result.failure(
+                IllegalStateException("AI provider is not configured")
+            )
         }
 
         try {
@@ -77,21 +85,26 @@ class GeminiService {
                 .post(jsonBody.toRequestBody("application/json".toMediaType()))
                 .build()
 
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-                return@withContext Result.success(getSimulatedResponse(prompt))
-            }
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(
+                        IllegalStateException("AI provider request failed (${response.code})")
+                    )
+                }
 
-            val bodyString = response.body?.string() ?: ""
-            val parsed = responseAdapter.fromJson(bodyString)
-            val text = parsed?.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
-            if (!text.isNullOrBlank()) {
-                Result.success(text)
-            } else {
-                Result.success(getSimulatedResponse(prompt))
+                val bodyString = response.body?.string().orEmpty()
+                val parsed = responseAdapter.fromJson(bodyString)
+                val text = parsed?.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                if (!text.isNullOrBlank()) {
+                    Result.success(text)
+                } else {
+                    Result.failure(IllegalStateException("AI provider returned no usable content"))
+                }
             }
-        } catch (e: Exception) {
-            Result.success(getSimulatedResponse(prompt))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            Result.failure(IllegalStateException("AI provider is unavailable"))
         }
     }
 
@@ -127,40 +140,4 @@ $notesSummary
         return generateContent(prompt)
     }
 
-    private fun getSimulatedResponse(prompt: String): String {
-        return when {
-            prompt.contains("Reformat and elevate", ignoreCase = true) -> {
-                """## Executive Overview
-Structured synthesis of core architectural principles and milestones.
-
-### Key Dimensions:
-* **Spatial Performance:** Sub-pixel Bézier transformations calculated in real-time.
-* **Knowledge Threads:** Bi-directional link graph linking [[Sprint Deliverables]].
-
-### Action Plan:
-- [ ] Review coordinate math with rendering team
-- [ ] Align with [[Design Critique Sync]] schedule
-- [ ] Verify fluid 60fps pan & zoom bounds"""
-            }
-            prompt.contains("Synthesize these notes", ignoreCase = true) || prompt.contains("space", ignoreCase = true) -> {
-                """### Kinetic Canvas Space Synthesis
-**Executive Summary:**
-The active canvas is organized around high-performance spatial cards, low-latency inking pipelines, and dynamic Bézier thread routing.
-
-**Core Themes:**
-* **Architecture & Infrastructure:** Sub-pixel positioning and hardware-accelerated drawing.
-* **Sprint Momentum:** Deliverables are on track with four verified milestones.
-
-**Next Actions:**
-- [ ] Complete coordinate boundary validation
-- [ ] Connect pending design critiques to sprint deliverables"""
-            }
-            prompt.contains("sort", ignoreCase = true) -> {
-                "Board sorted into balanced spatial quadrants: Architecture (Top-Left), Code (Top-Right), Product/Sprint (Bottom-Left), Priority/Critique (Bottom-Right)."
-            }
-            else -> {
-                "### Gemini Board Assistant\nI've analyzed your spatial notes. You have interconnected architecture specs, sprint tasks, and design critiques ready for review."
-            }
-        }
-    }
 }

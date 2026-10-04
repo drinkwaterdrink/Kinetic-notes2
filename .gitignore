@@ -17,8 +17,7 @@ local.properties
 .env
 debug.keystore
 
-# Room exports generated schema JSON here; keep build output out of source control.
-/app/schemas
+# Room schema fixtures are checked in for migration review and instrumentation tests.
 
 # Local/generated APK deliverables
 /*.apk

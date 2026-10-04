@@ -172,15 +172,18 @@ class NotesViewModel(
         _uiState
     ) { notes, state ->
         notes.filter { note ->
+            val canInspectProtectedText = !note.isLocked || note.id in state.unlockedNoteIds
             val matchesGroup = state.selectedGroupId == null || note.groupId == state.selectedGroupId
             val matchesTag = state.selectedTag == null ||
-                    note.tag.equals(state.selectedTag, ignoreCase = true)
+                    (canInspectProtectedText && note.tag.equals(state.selectedTag, ignoreCase = true))
             val matchesSearch = state.searchQuery.isBlank() ||
-                    note.title.contains(state.searchQuery, ignoreCase = true) ||
-                    note.content.contains(state.searchQuery, ignoreCase = true) ||
-                    note.tag.contains(state.searchQuery, ignoreCase = true) ||
-                    note.folder.contains(state.searchQuery, ignoreCase = true) ||
-                    note.type.name.contains(state.searchQuery, ignoreCase = true)
+                    (canInspectProtectedText && (
+                        note.title.contains(state.searchQuery, ignoreCase = true) ||
+                            note.content.contains(state.searchQuery, ignoreCase = true) ||
+                            note.tag.contains(state.searchQuery, ignoreCase = true) ||
+                            note.folder.contains(state.searchQuery, ignoreCase = true) ||
+                            note.type.name.contains(state.searchQuery, ignoreCase = true)
+                        ))
             matchesGroup && matchesTag && matchesSearch
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -190,12 +193,16 @@ class NotesViewModel(
         // database file. The ViewModel deliberately does NOT re-seed an empty table - deleting
         // every note used to resurrect the sample notes on the next launch.
         viewModelScope.launch {
-            combine(allNotes, allLinks) { notes, links ->
-                Pair(notes, links)
+            combine(allNotes, allLinks, _uiState) { notes, links, state ->
+                val eligibleIds = notes
+                    .filter { !it.isLocked || it.id in state.unlockedNoteIds }
+                    .map { it.id }
+                    .toSet()
+                val eligibleNotes = notes.filter { it.id in eligibleIds }
+                val eligibleLinks = links.filter { it.sourceId in eligibleIds && it.targetId in eligibleIds }
+                Pair(eligibleNotes, eligibleLinks)
             }.collect { (notes, links) ->
-                if (notes.isNotEmpty()) {
-                    graphEngine.updateGraph(notes, links)
-                }
+                graphEngine.updateGraph(notes, links)
             }
         }
     }
@@ -720,6 +727,12 @@ class NotesViewModel(
     }
 
     // Gemini AI Features
+    /** Protected notes are not eligible for provider prompts until a real authenticated
+     * protection session exists. The current Boolean lock is only a UI label. */
+    private fun aiEligibleNotes(): List<NoteEntity> = allNotes.value.filter {
+        !it.isLocked || it.id in _uiState.value.unlockedNoteIds
+    }
+
     /**
      * AI never changes durable notes from a shortcut. It first creates a reviewable plan;
      * the user must explicitly Apply it. This matters especially for spatial layouts where a
@@ -755,22 +768,35 @@ class NotesViewModel(
         val note = _uiState.value.selectedNote ?: return
         viewModelScope.launch {
             _uiState.update { it.copy(isAiLoading = true) }
-            val beautified = repository.beautifyNoteContent(note.title, note.content)
-            _uiState.update {
-                it.copy(
-                    isAiLoading = false,
-                    aiPreview = AiPreview(
-                        kind = AiPreviewKind.NOTE_CONTENT,
-                        title = "Formatting preview",
-                        description = "Review the proposed formatting before it replaces this note.",
-                        noteId = note.id,
-                        originalContent = note.content,
-                        proposedContent = beautified
-                    ),
-                    canUndoAiChange = false,
-                    isAskGeminiExpanded = true
-                )
-            }
+            val result = repository.beautifyNoteContent(note.title, note.content)
+            result.fold(
+                onSuccess = { beautified ->
+                    _uiState.update {
+                        it.copy(
+                            isAiLoading = false,
+                            aiPreview = AiPreview(
+                                kind = AiPreviewKind.NOTE_CONTENT,
+                                title = "Formatting preview",
+                                description = "Review the proposed formatting before it replaces this note.",
+                                noteId = note.id,
+                                originalContent = note.content,
+                                proposedContent = beautified
+                            ),
+                            canUndoAiChange = false,
+                            isAskGeminiExpanded = true
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    _uiState.update {
+                        it.copy(
+                            isAiLoading = false,
+                            aiPreview = null,
+                            userNotice = error.message ?: "Assistant unavailable"
+                        )
+                    }
+                }
+            )
         }
     }
 
@@ -839,13 +865,27 @@ class NotesViewModel(
 
     fun synthesizeActiveSpace() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isAiLoading = true)
-            val summary = repository.synthesizeActiveSpace(selectedGroupName.value, filteredNotes.value)
-            _uiState.value = _uiState.value.copy(
-                isAiLoading = false,
-                aiSummaryOutput = summary,
-                isAskGeminiExpanded = true,
-                userNotice = "Active space synthesized by Gemini"
+            _uiState.update { it.copy(isAiLoading = true) }
+            val result = repository.synthesizeActiveSpace(
+                selectedGroupName.value,
+                filteredNotes.value.filter { !it.isLocked || it.id in _uiState.value.unlockedNoteIds }
+            )
+            result.fold(
+                onSuccess = { summary ->
+                    _uiState.update {
+                        it.copy(
+                            isAiLoading = false,
+                            aiSummaryOutput = summary,
+                            isAskGeminiExpanded = true,
+                            userNotice = "Active space synthesized by Assistant"
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    _uiState.update {
+                        it.copy(isAiLoading = false, userNotice = error.message ?: "Assistant unavailable")
+                    }
+                }
             )
         }
     }
@@ -869,11 +909,25 @@ class NotesViewModel(
                     }
                 }
                 else -> {
-                    val summary = repository.synthesizeActiveSpace(query, filteredNotes.value)
-                    _uiState.value = _uiState.value.copy(
-                        isAiLoading = false,
-                        aiSummaryOutput = summary,
-                        isAskGeminiExpanded = true
+                    val result = repository.synthesizeActiveSpace(
+                        query,
+                        filteredNotes.value.filter { !it.isLocked || it.id in _uiState.value.unlockedNoteIds }
+                    )
+                    result.fold(
+                        onSuccess = { summary ->
+                            _uiState.update {
+                                it.copy(
+                                    isAiLoading = false,
+                                    aiSummaryOutput = summary,
+                                    isAskGeminiExpanded = true
+                                )
+                            }
+                        },
+                        onFailure = { error ->
+                            _uiState.update {
+                                it.copy(isAiLoading = false, userNotice = error.message ?: "Assistant unavailable")
+                            }
+                        }
                     )
                 }
             }
@@ -884,10 +938,18 @@ class NotesViewModel(
         val note = _uiState.value.selectedNote ?: return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isAiLoading = true)
-            val suggestions = repository.suggestLinks(note, allNotes.value)
-            _uiState.value = _uiState.value.copy(
-                isAiLoading = false,
-                aiSuggestedLinks = suggestions
+            val result = repository.suggestLinks(note, aiEligibleNotes())
+            result.fold(
+                onSuccess = { suggestions ->
+                    _uiState.update {
+                        it.copy(isAiLoading = false, aiSuggestedLinks = suggestions)
+                    }
+                },
+                onFailure = { error ->
+                    _uiState.update {
+                        it.copy(isAiLoading = false, userNotice = error.message ?: "Assistant unavailable")
+                    }
+                }
             )
         }
     }

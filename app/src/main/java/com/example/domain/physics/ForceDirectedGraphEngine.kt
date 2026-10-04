@@ -158,6 +158,9 @@ class ForceDirectedGraphEngine(
                 val nodes = currentState.nodes.values.toList()
                 val edges = currentState.edges
                 if (nodes.size < 2) {
+                    // A zero/one-node graph is already at equilibrium. Advance the bounded
+                    // lifecycle so it cannot spin forever while the graph screen is hidden.
+                    stepCount++
                     delay(50)
                     continue
                 }

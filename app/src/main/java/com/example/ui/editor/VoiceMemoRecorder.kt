@@ -271,10 +271,11 @@ fun VoiceMemoRecorder(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Gemini AI Transcription Button
+        // Honest baseline: this component currently tracks a recording timer and waveform only;
+        // it does not persist microphone bytes, so it must not offer fabricated transcription.
         Button(
             onClick = onTranscribeRequested,
-            enabled = !isAiLoading && currentRecordedMs > 0,
+            enabled = false,
             colors = ButtonDefaults.buttonColors(
                 containerColor = KineticPrimary,
                 contentColor = Color.White,
@@ -303,8 +304,14 @@ fun VoiceMemoRecorder(
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Gemini Transcribe & Extract Checklist", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text("Transcription unavailable", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
         }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "Audio bytes are not stored by this prototype yet.",
+            color = KineticTextMuted,
+            fontSize = 11.sp
+        )
     }
 }

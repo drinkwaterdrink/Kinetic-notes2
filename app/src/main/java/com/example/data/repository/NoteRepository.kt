@@ -206,9 +206,9 @@ class NoteRepository(
     }
 
     // Gemini AI Features
-    suspend fun suggestLinks(currentNote: NoteEntity, allNotes: List<NoteEntity>): List<LinkSuggestion> {
+    suspend fun suggestLinks(currentNote: NoteEntity, allNotes: List<NoteEntity>): Result<List<LinkSuggestion>> {
         val candidates = allNotes.filter { it.id != currentNote.id }
-        if (candidates.isEmpty()) return emptyList()
+        if (candidates.isEmpty()) return Result.success(emptyList())
 
         val candidateTitles = candidates.joinToString(", ") { "\"${it.title}\"" }
         val prompt = """
@@ -228,7 +228,7 @@ Format response as a JSON array of objects:
 Return ONLY JSON.
 """.trimIndent()
 
-        val response = geminiService.generateContent(prompt).getOrNull() ?: return emptyList()
+        val response = geminiService.generateContent(prompt).getOrElse { return Result.failure(it) }
         val suggestions = mutableListOf<LinkSuggestion>()
 
         try {
@@ -251,21 +251,21 @@ Return ONLY JSON.
                     )
                 }
             }
-        } catch (e: Exception) {
-            // fallback
+        } catch (_: Exception) {
+            return Result.failure(IllegalStateException("AI provider returned invalid link suggestions"))
         }
-        return suggestions
+        return Result.success(suggestions)
     }
 
-    suspend fun beautifyNoteContent(title: String, content: String): String {
-        return geminiService.beautifyAndFormatNote(title, content).getOrDefault(content)
+    suspend fun beautifyNoteContent(title: String, content: String): Result<String> {
+        return geminiService.beautifyAndFormatNote(title, content)
     }
 
-    suspend fun synthesizeActiveSpace(spaceName: String, notes: List<NoteEntity>): String {
-        return geminiService.synthesizeSpace(spaceName, notes).getOrDefault("Space synthesized successfully.")
+    suspend fun synthesizeActiveSpace(spaceName: String, notes: List<NoteEntity>): Result<String> {
+        return geminiService.synthesizeSpace(spaceName, notes)
     }
 
-    suspend fun generateSummaryAndChecklist(content: String): String {
+    suspend fun generateSummaryAndChecklist(content: String): Result<String> {
         val prompt = """
 Analyze the following note content and produce:
 1. A concise 2-sentence executive summary.
@@ -275,17 +275,17 @@ Content:
 $content
 """.trimIndent()
 
-        return geminiService.generateContent(prompt).getOrDefault("Summary generated successfully.")
+        return geminiService.generateContent(prompt)
     }
 
-    suspend fun transcribeAudioMemo(durationMs: Long): String {
+    suspend fun transcribeAudioMemo(durationMs: Long): Result<String> {
         val prompt = """
-Simulate transcription and intelligent extraction for a recorded audio voice memo ($durationMs ms) in Kinetic Notes.
+Transcribe and extract action items from a recorded audio voice memo ($durationMs ms) in Kinetic Notes.
 Provide:
 1. Key takeaways
 2. 3 action checklist items
 """.trimIndent()
 
-        return geminiService.generateContent(prompt).getOrDefault("Audio memo transcribed.")
+        return geminiService.generateContent(prompt)
     }
 }

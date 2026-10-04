@@ -454,7 +454,7 @@ fun KeepNoteCard(
 
                 // Title
                 Text(
-                    text = note.title,
+                    text = if (note.isLocked && !isUnlocked) "Locked note" else note.title,
                     color = KineticTextPrimary,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,

@@ -710,13 +710,13 @@ fun ReferenceNoteCardItem(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Lock,
-                                    contentDescription = "Encrypted",
+                                    contentDescription = "Locked note",
                                     tint = KineticTextMuted,
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "Encrypted Note",
+                                    text = "Locked note",
                                     color = KineticTextMuted,
                                     fontSize = 11.sp,
                                     fontFamily = FontFamily.Monospace
