@@ -79,6 +79,8 @@ jobs:
       - name: Instrumented migration and persistence checks
         id: instrumentation
         continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -95,6 +97,18 @@ jobs:
               echo "----- connectedDebugAndroidTest -----"
               cat connected.log
             } >> "$GITHUB_WORKSPACE/ci.log"
+            if command -v gh >/dev/null 2>&1 && [ -n "$GH_TOKEN" ]; then
+              {
+                echo "Instrumentation status: $status"
+                echo '```'
+                cat connected.log
+                echo '```'
+              } > connected-report.md
+              gh issue create \
+                --repo "$GITHUB_REPOSITORY" \
+                --title "Instrumentation details ${GITHUB_SHA:0:7}" \
+                --body-file connected-report.md || true
+            fi
             cat connected.log
             exit "$status"
 
