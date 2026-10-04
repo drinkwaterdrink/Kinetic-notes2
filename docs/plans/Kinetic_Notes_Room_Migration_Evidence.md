@@ -28,6 +28,6 @@ This fixture is deliberately labeled as reconstructed evidence. It does not prov
 - Room schema generation is configured with `room.schemaLocation`.
 - Generated schemas are supplied to Android-test assets from `app/schemas` during CI.
 - The migration test is mandatory in the CI workflow and is now run with phase-separated emulator diagnostics.
-- Hosted run `37238700662` built and uploaded the APK, then the emulator action failed before its script started. Its diagnostic `emulator-runner-status.log` records `runner_outcome=failure` and `phase_logs=absent`; the Android-test compilation and migration assertions did not execute. Migration correctness therefore remains **Not verified**, not silently waived.
+- Hosted run `37239195565` built and uploaded the APK, then the emulator action failed before its script started. Its diagnostic `emulator-runner-status.log` records `runner_outcome=failure` and `phase_logs=absent`; the Android-test compilation and migration assertions did not execute. Migration correctness therefore remains **Not verified**, not silently waived.
 
 A genuine historical v2 schema can only be promoted to verified evidence if it is recovered from a trusted repository artifact, a known-good user database/export, or a successful test run using the actual historical schema.
