@@ -89,6 +89,8 @@ jobs:
           KX_EXP_KEYSTORE_B64: ${{ secrets.KX_EXP_KEYSTORE_B64 }}
         run: |
           set -euo pipefail
+          exec > >(tee -a ci.log) 2>&1
+          echo "phase=apk-packaging"
           apk="app/build/outputs/apk/debug/app-debug.apk"
           test -f "$apk"
           mkdir -p dist
