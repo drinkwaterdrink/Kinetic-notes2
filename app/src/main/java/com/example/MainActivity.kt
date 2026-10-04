@@ -177,9 +177,6 @@ fun KineticCanvasApp(viewModel: NotesViewModel) {
                         onNoteClick = { note ->
                             viewModel.openNote(note)
                         },
-                        onFocusClick = { note ->
-                            viewModel.openNote(note)
-                        },
                         onCardTapInLinkingMode = { id ->
                             viewModel.onCardTappedInLinkingMode(id)
                         },
@@ -652,7 +649,15 @@ fun KineticCanvasApp(viewModel: NotesViewModel) {
                         aiSummaryOutput = uiState.aiSummaryOutput,
                         isAiLoading = uiState.isAiLoading,
                         availableFolders = customFolders,
+                        saveStatus = uiState.editorSave.status,
                         onClose = { viewModel.closeFocusSheet() },
+                        onDraftChanged = { viewModel.markEditorDirty() },
+                        onSaveDraft = { title, content ->
+                            viewModel.saveEditorDraft(note.id, title, content)
+                        },
+                        onSaveAndClose = { title, content ->
+                            viewModel.saveEditorDraftAndClose(note.id, title, content)
+                        },
                         onUpdateNote = { viewModel.updateSelectedNote(it) },
                         onDeleteNote = { viewModel.deleteSelectedNote() },
                         onTogglePin = { viewModel.togglePin(note) },

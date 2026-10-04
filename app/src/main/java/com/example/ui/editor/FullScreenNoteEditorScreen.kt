@@ -48,10 +48,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,7 +81,9 @@ import com.example.ui.theme.KineticSecondary
 import com.example.ui.theme.KineticTextMuted
 import com.example.ui.theme.KineticTextPrimary
 import com.example.ui.theme.KineticTextSecondary
+import com.example.ui.viewmodel.EditorSaveStatus
 import com.example.ui.viewmodel.FolderItem
+import kotlinx.coroutines.delay
 
 @Composable
 fun FullScreenNoteEditorScreen(
@@ -89,7 +93,11 @@ fun FullScreenNoteEditorScreen(
     aiSummaryOutput: String?,
     isAiLoading: Boolean,
     availableFolders: List<FolderItem> = emptyList(),
+    saveStatus: EditorSaveStatus = EditorSaveStatus.SAVED,
     onClose: () -> Unit,
+    onDraftChanged: () -> Unit = {},
+    onSaveDraft: (title: String, content: String) -> Unit = { _, _ -> },
+    onSaveAndClose: (title: String, content: String) -> Unit = { _, _ -> },
     onUpdateNote: (NoteEntity) -> Unit,
     onDeleteNote: () -> Unit,
     onTogglePin: () -> Unit,
@@ -103,13 +111,62 @@ fun FullScreenNoteEditorScreen(
     onAcceptAiLink: (LinkSuggestion) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    BackHandler {
-        onClose()
-    }
-
     val clipboardManager = LocalClipboardManager.current
+
+    // Editor-local draft. Keystrokes mutate ONLY this state; the database is written by the
+    // debounced autosave below, by the Save button, or by Back/Done - never per keystroke.
     var title by remember(note.id) { mutableStateOf(note.title) }
     var content by remember(note.id) { mutableStateOf(note.content) }
+    var isDirty by remember(note.id) { mutableStateOf(false) }
+
+    val currentTitle by rememberUpdatedState(title)
+    val currentContent by rememberUpdatedState(content)
+
+    fun onDraftEdited() {
+        if (!isDirty) isDirty = true
+        onDraftChanged()
+    }
+
+    fun flushNow() {
+        if (isDirty) {
+            isDirty = false
+            onSaveDraft(currentTitle, currentContent)
+        }
+    }
+
+    // Debounced durable autosave: restarts on every keystroke, fires once typing pauses.
+    LaunchedEffect(note.id, title, content) {
+        if (!isDirty) return@LaunchedEffect
+        delay(AUTOSAVE_DEBOUNCE_MS)
+        isDirty = false
+        onSaveDraft(currentTitle, currentContent)
+    }
+
+    // Safe Back: flush the pending draft, and only leave once the write has been issued.
+    BackHandler {
+        if (isDirty) {
+            isDirty = false
+            onSaveAndClose(currentTitle, currentContent)
+        } else {
+            onClose()
+        }
+    }
+
+    fun closeWithFlush() {
+        if (isDirty) {
+            isDirty = false
+            onSaveAndClose(currentTitle, currentContent)
+        } else {
+            onClose()
+        }
+    }
+
+    // Metadata changes (colour, group, type...) must carry the live draft so an in-flight
+    // edit is never overwritten by a stale snapshot of the note.
+    fun updateMetadata(updated: NoteEntity) {
+        isDirty = false
+        onUpdateNote(updated.copy(title = currentTitle, content = currentContent))
+    }
     var activeTab by remember(note.id) {
         mutableStateOf(if (note.type == NoteType.CHECKLIST) "checklist" else "doc")
     }
@@ -163,7 +220,7 @@ fun FullScreenNoteEditorScreen(
                     .padding(horizontal = 8.dp, vertical = 6.dp)
             ) {
                 IconButton(
-                    onClick = onClose,
+                    onClick = { closeWithFlush() },
                     modifier = Modifier.testTag("btn_close_editor")
                 ) {
                     Icon(
@@ -238,7 +295,7 @@ fun FullScreenNoteEditorScreen(
                                 },
                                 onClick = {
                                     showFolderMenu = false
-                                    onUpdateNote(note.copy(folder = folder.name, tag = folder.name))
+                                    updateMetadata(note.copy(folder = folder.name, tag = folder.name))
                                 }
                             )
                         }
@@ -266,7 +323,7 @@ fun FullScreenNoteEditorScreen(
                                     shape = CircleShape
                                 )
                                 .clickable {
-                                    onUpdateNote(note.copy(colorHex = hex))
+                                    updateMetadata(note.copy(colorHex = hex))
                                 }
                         )
                     }
@@ -315,13 +372,35 @@ fun FullScreenNoteEditorScreen(
 
                 Spacer(modifier = Modifier.width(4.dp))
 
-                // Done Button
+                // Explicit Save: immediate durable flush, independent of the debounce.
                 Button(
-                    onClick = onClose,
+                    onClick = { flushNow() },
+                    enabled = isDirty || saveStatus == EditorSaveStatus.ERROR,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = KineticPrimary,
+                        contentColor = Color.White,
+                        disabledContainerColor = Color(0xFF1B2030),
+                        disabledContentColor = KineticTextMuted
+                    ),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .height(30.dp)
+                        .testTag("btn_save_note")
+                ) {
+                    Text("Save", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.width(4.dp))
+
+                // Done Button (flushes, then leaves)
+                Button(
+                    onClick = { closeWithFlush() },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFF222838),
                         contentColor = Color.White
                     ),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.height(30.dp)
                 ) {
@@ -342,7 +421,7 @@ fun FullScreenNoteEditorScreen(
                     value = title,
                     onValueChange = {
                         title = it
-                        onUpdateNote(note.copy(title = it))
+                        onDraftEdited()
                     },
                     textStyle = TextStyle(
                         color = Color.White,
@@ -370,8 +449,14 @@ fun FullScreenNoteEditorScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     val wordCount = content.trim().split("\\s+".toRegex()).filter { it.isNotBlank() }.size
+                    SaveStatusChip(
+                        status = saveStatus,
+                        isDirty = isDirty,
+                        modifier = Modifier.testTag("editor_save_status")
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Updated just now • $wordCount words",
+                        text = "$wordCount words",
                         color = KineticTextMuted,
                         fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace
@@ -461,7 +546,7 @@ fun FullScreenNoteEditorScreen(
                         value = content,
                         onValueChange = {
                             content = it
-                            onUpdateNote(note.copy(content = it))
+                            onDraftEdited()
                         },
                         textStyle = TextStyle(
                             color = KineticTextPrimary,
@@ -646,5 +731,45 @@ fun FullScreenNoteEditorScreen(
                 }
             }
         }
+    }
+}
+
+
+/** How long typing must pause before the draft is flushed to Room. */
+const val AUTOSAVE_DEBOUNCE_MS = 700L
+
+/**
+ * Visible saved / unsaved / saving / error state for the open note.
+ * [isDirty] is the editor-local truth and always wins over a stale SAVED status.
+ */
+@Composable
+fun SaveStatusChip(
+    status: EditorSaveStatus,
+    isDirty: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val effective = if (isDirty && status != EditorSaveStatus.ERROR) EditorSaveStatus.UNSAVED else status
+    val (label, tint) = when (effective) {
+        EditorSaveStatus.SAVED -> "Saved" to KineticTextMuted
+        EditorSaveStatus.UNSAVED -> "Unsaved" to Color(0xFFF59E0B)
+        EditorSaveStatus.SAVING -> "Saving…" to KineticSecondary
+        EditorSaveStatus.ERROR -> "Save failed" to Color(0xFFEF4444)
+    }
+
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(tint)
+        )
+        Spacer(modifier = Modifier.width(5.dp))
+        Text(
+            text = label,
+            color = tint,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium,
+            fontFamily = FontFamily.Monospace
+        )
     }
 }

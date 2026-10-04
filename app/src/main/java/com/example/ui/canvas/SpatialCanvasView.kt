@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,7 +30,6 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,7 +51,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -63,6 +62,7 @@ import androidx.compose.ui.zIndex
 import com.example.data.local.NoteEntity
 import com.example.data.local.NoteLinkEntity
 import com.example.data.local.NoteType
+import com.example.ui.common.relativeTimeLabel
 import com.example.ui.theme.KineticDarkBackground
 import com.example.ui.theme.KineticPrimary
 import com.example.ui.theme.KineticSecondary
@@ -86,7 +86,6 @@ fun SpatialCanvasView(
     onResetZoom: () -> Unit,
     onCardMove: (noteId: String, newX: Float, newY: Float) -> Unit,
     onNoteClick: (NoteEntity) -> Unit,
-    onFocusClick: (NoteEntity) -> Unit,
     onCardTapInLinkingMode: (String) -> Unit,
     onDeleteNote: (String) -> Unit,
     onNewNoteClick: () -> Unit,
@@ -243,7 +242,6 @@ fun SpatialCanvasView(
                             onNoteClick(note)
                         }
                     },
-                    onFocusClick = { onNoteClick(note) },
                     onConnectClick = { onCardTapInLinkingMode(note.id) },
                     onDeleteClick = { onDeleteNote(note.id) },
                     onDragStart = {
@@ -401,7 +399,6 @@ fun ReferenceNoteCardItem(
     isSelectedForLinking: Boolean,
     isActiveDragged: Boolean,
     onCardClick: () -> Unit,
-    onFocusClick: () -> Unit,
     onConnectClick: () -> Unit,
     onDeleteClick: () -> Unit,
     onDragStart: () -> Unit,
@@ -415,9 +412,6 @@ fun ReferenceNoteCardItem(
     } catch (e: Exception) {
         KineticPrimary
     }
-
-    val density = LocalDensity.current
-    val touchSlopPx = with(density) { 8.dp.toPx() }
 
     Surface(
         color = Color(0xFF131722).copy(alpha = 0.95f),
@@ -436,30 +430,29 @@ fun ReferenceNoteCardItem(
                 IntOffset(pos.x.roundToInt(), pos.y.roundToInt())
             }
             .width(SpatialGridConfig.CARD_WIDTH_WORLD.dp)
+            // Tap-to-edit. detectTapGestures only reports a tap when the pointer never
+            // travelled past touch slop, and it bails out as soon as the drag detector below
+            // consumes a move - so tap and drag can never fight each other. A tap that wobbles
+            // by a few pixels is still a tap.
+            .pointerInput(note.id) {
+                detectTapGestures(onTap = { onCardClick() })
+            }
+            // Drag-to-move. Compose delivers dragAmount in this node's LOCAL (world) space
+            // because the node lives inside the zoomed graphicsLayer, which is exactly what
+            // accumulateLocalWorldDrag expects.
             .pointerInput(note.id, zoom) {
-                var totalDragDistance = 0f
                 var initialWorldPos = Offset.Zero
 
                 detectDragGestures(
                     onDragStart = {
-                        totalDragDistance = 0f
                         initialWorldPos = getPosition()
                         onDragStart()
                     },
-                    onDragEnd = {
-                        if (totalDragDistance < touchSlopPx) {
-                            onCardClick()
-                        } else {
-                            onDragEnd()
-                        }
-                    },
-                    onDragCancel = {
-                        onDragCancel(initialWorldPos)
-                    },
+                    onDragEnd = { onDragEnd() },
+                    onDragCancel = { onDragCancel(initialWorldPos) },
                     onDrag = { change, dragAmount ->
-                        // Intentionally consume pointer event to prevent parent canvas pan
+                        // Consume so the parent canvas does not pan while a card is moving.
                         change.consume()
-                        totalDragDistance += dragAmount.getDistance()
                         onDragDelta(dragAmount)
                     }
                 )
@@ -558,42 +551,20 @@ fun ReferenceNoteCardItem(
                             verticalArrangement = Arrangement.Center,
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = "PROGRESS",
-                                    color = KineticTextMuted,
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                                Spacer(modifier = Modifier.weight(1f))
-                                Text(
-                                    text = "4/4 (100%)",
-                                    color = Color(0xFF10B981),
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            LinearProgressIndicator(
-                                progress = { 1.0f },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(4.dp)
-                                    .clip(RoundedCornerShape(2.dp)),
-                                color = Color(0xFF10B981),
-                                trackColor = Color(0x20FFFFFF),
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "• Minimap viewport radar sync",
+                                text = "CHECKLIST",
                                 color = KineticTextMuted,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = note.content.ifBlank { "Tap to add tasks" },
+                                color = KineticTextSecondary,
                                 fontSize = 10.sp,
-                                maxLines = 1,
+                                lineHeight = 14.sp,
+                                maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
@@ -669,7 +640,7 @@ fun ReferenceNoteCardItem(
                     .padding(top = 4.dp)
             ) {
                 Text(
-                    text = "2h ago",
+                    text = relativeTimeLabel(note.updatedAt),
                     color = KineticTextMuted,
                     fontSize = 9.sp,
                     fontFamily = FontFamily.Monospace
@@ -677,14 +648,11 @@ fun ReferenceNoteCardItem(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                Surface(
-                    color = Color.Transparent,
-                    modifier = Modifier.clickable { onCardClick() }
-                ) {
+                if (note.isPinned) {
                     Text(
-                        text = "OPEN ⛶",
-                        color = KineticPrimary,
-                        fontSize = 9.sp,
+                        text = "PINNED",
+                        color = KineticPrimary.copy(alpha = 0.8f),
+                        fontSize = 8.sp,
                         fontWeight = FontWeight.SemiBold,
                         fontFamily = FontFamily.Monospace
                     )

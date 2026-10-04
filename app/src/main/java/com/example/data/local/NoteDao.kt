@@ -87,6 +87,9 @@ interface NoteDao {
     @Query("SELECT * FROM note_links")
     fun getAllLinks(): Flow<List<NoteLinkEntity>>
 
+    @Query("SELECT * FROM note_links")
+    suspend fun getAllLinksDirect(): List<NoteLinkEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLink(link: NoteLinkEntity)
 
