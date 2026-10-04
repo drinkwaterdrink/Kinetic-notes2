@@ -85,8 +85,16 @@ jobs:
           profile: Pixel_2
           disable-animations: true
           script: |
+            set +e
             gradle --stop || true
-            gradle connectedDebugAndroidTest --stacktrace --no-configuration-cache --no-daemon --console=plain 2>&1 | tee -a ci.log
+            gradle connectedDebugAndroidTest --stacktrace --no-configuration-cache --no-daemon --console=plain > connected.log 2>&1
+            status=$?
+            {
+              echo "----- connectedDebugAndroidTest -----"
+              cat connected.log
+            } >> "$GITHUB_WORKSPACE/ci.log"
+            cat connected.log
+            exit "$status"
 
       - name: Package installable EXP APK
         run: |
