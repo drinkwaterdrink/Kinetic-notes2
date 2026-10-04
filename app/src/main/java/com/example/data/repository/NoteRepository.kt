@@ -234,18 +234,23 @@ Return ONLY JSON.
         try {
             val jsonStart = response.indexOf('[')
             val jsonEnd = response.lastIndexOf(']')
-            if (jsonStart >= 0 && jsonEnd > jsonStart) {
-                val jsonStr = response.substring(jsonStart, jsonEnd + 1)
-                val array = JSONArray(jsonStr)
-                for (i in 0 until array.length()) {
-                    val obj = array.getJSONObject(i)
-                    val targetTitle = obj.optString("targetTitle")
-                    val reason = obj.optString("reason")
-                    val matchingNote = candidates.find { it.title.equals(targetTitle, ignoreCase = true) }
+            if (jsonStart < 0 || jsonEnd <= jsonStart) {
+                return Result.failure(IllegalStateException("AI provider returned invalid link suggestions"))
+            }
+
+            val array = JSONArray(response.substring(jsonStart, jsonEnd + 1))
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                val targetTitle = obj.optString("targetTitle").trim()
+                val reason = obj.optString("reason").trim()
+                val matchingNote = candidates.find { it.title.equals(targetTitle, ignoreCase = true) }
+                // Only surface links to notes that still exist. Never let an untrusted model
+                // response create a new note as a side effect of accepting a suggestion.
+                if (matchingNote != null && reason.isNotBlank()) {
                     suggestions.add(
                         LinkSuggestion(
-                            targetTitle = matchingNote?.title ?: targetTitle,
-                            targetId = matchingNote?.id,
+                            targetTitle = matchingNote.title,
+                            targetId = matchingNote.id,
                             reason = reason
                         )
                     )
@@ -254,7 +259,11 @@ Return ONLY JSON.
         } catch (_: Exception) {
             return Result.failure(IllegalStateException("AI provider returned invalid link suggestions"))
         }
-        return Result.success(suggestions)
+        return if (suggestions.isNotEmpty() || response.trim() == "[]") {
+            Result.success(suggestions)
+        } else {
+            Result.failure(IllegalStateException("AI provider returned no valid link suggestions"))
+        }
     }
 
     suspend fun beautifyNoteContent(title: String, content: String): Result<String> {
@@ -278,14 +287,9 @@ $content
         return geminiService.generateContent(prompt)
     }
 
-    suspend fun transcribeAudioMemo(durationMs: Long): Result<String> {
-        val prompt = """
-Transcribe and extract action items from a recorded audio voice memo ($durationMs ms) in Kinetic Notes.
-Provide:
-1. Key takeaways
-2. 3 action checklist items
-""".trimIndent()
-
-        return geminiService.generateContent(prompt)
+    suspend fun transcribeAudioMemo(_durationMs: Long): Result<String> {
+        return Result.failure(
+            UnsupportedOperationException("Audio transcription is unavailable until audio bytes are stored")
+        )
     }
 }

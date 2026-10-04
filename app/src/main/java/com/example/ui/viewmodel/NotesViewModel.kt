@@ -214,9 +214,12 @@ class NotesViewModel(
     /** Refresh graph physics bounds after Compose measures the browsing viewport. */
     fun updateGraphBounds(width: Float, height: Float) {
         graphEngine.updateBounds(width, height)
-        if (allNotes.value.isNotEmpty()) {
-            graphEngine.updateGraph(allNotes.value, allLinks.value)
+        val eligibleNotes = allNotes.value.filter(::isAiEligible)
+        val eligibleIds = eligibleNotes.map { it.id }.toSet()
+        val eligibleLinks = allLinks.value.filter {
+            it.sourceId in eligibleIds && it.targetId in eligibleIds
         }
+        graphEngine.updateGraph(eligibleNotes, eligibleLinks)
     }
 
     fun selectGroup(groupId: String?) {
@@ -729,8 +732,19 @@ class NotesViewModel(
     // Gemini AI Features
     /** Protected notes are not eligible for provider prompts until a real authenticated
      * protection session exists. The current Boolean lock is only a UI label. */
-    private fun aiEligibleNotes(): List<NoteEntity> = allNotes.value.filter {
-        !it.isLocked || it.id in _uiState.value.unlockedNoteIds
+    private fun isAiEligible(note: NoteEntity): Boolean =
+        !note.isLocked || note.id in _uiState.value.unlockedNoteIds
+
+    private fun aiEligibleNotes(): List<NoteEntity> = allNotes.value.filter(::isAiEligible)
+
+    private fun rejectProtectedAiAction() {
+        _uiState.update {
+            it.copy(
+                isAiLoading = false,
+                aiPreview = null,
+                userNotice = "Unlock this note before using Assistant"
+            )
+        }
     }
 
     /**
@@ -741,7 +755,7 @@ class NotesViewModel(
     fun autoSortBoard() {
         viewModelScope.launch {
             _uiState.update { it.copy(isAiLoading = true) }
-            val notes = allNotes.value
+            val notes = aiEligibleNotes()
             val plannedPositions = notes.mapIndexed { index, note ->
                 val col = index % 2
                 val row = index / 2
@@ -766,6 +780,10 @@ class NotesViewModel(
 
     fun beautifyCurrentNote() {
         val note = _uiState.value.selectedNote ?: return
+        if (!isAiEligible(note)) {
+            rejectProtectedAiAction()
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(isAiLoading = true) }
             val result = repository.beautifyNoteContent(note.title, note.content)
@@ -883,7 +901,11 @@ class NotesViewModel(
                 },
                 onFailure = { error ->
                     _uiState.update {
-                        it.copy(isAiLoading = false, userNotice = error.message ?: "Assistant unavailable")
+                        it.copy(
+                            isAiLoading = false,
+                            aiSummaryOutput = null,
+                            userNotice = error.message ?: "Assistant unavailable"
+                        )
                     }
                 }
             )
@@ -925,7 +947,11 @@ class NotesViewModel(
                         },
                         onFailure = { error ->
                             _uiState.update {
-                                it.copy(isAiLoading = false, userNotice = error.message ?: "Assistant unavailable")
+                                it.copy(
+                                    isAiLoading = false,
+                                    aiSummaryOutput = null,
+                                    userNotice = error.message ?: "Assistant unavailable"
+                                )
                             }
                         }
                     )
@@ -936,6 +962,10 @@ class NotesViewModel(
 
     fun requestAiLinkSuggestions() {
         val note = _uiState.value.selectedNote ?: return
+        if (!isAiEligible(note)) {
+            rejectProtectedAiAction()
+            return
+        }
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isAiLoading = true)
             val result = repository.suggestLinks(note, aiEligibleNotes())
@@ -947,7 +977,11 @@ class NotesViewModel(
                 },
                 onFailure = { error ->
                     _uiState.update {
-                        it.copy(isAiLoading = false, userNotice = error.message ?: "Assistant unavailable")
+                        it.copy(
+                            isAiLoading = false,
+                            aiSuggestedLinks = emptyList(),
+                            userNotice = error.message ?: "Assistant unavailable"
+                        )
                     }
                 }
             )
@@ -956,20 +990,27 @@ class NotesViewModel(
 
     fun acceptAiLink(suggestion: LinkSuggestion) {
         val currentNote = _uiState.value.selectedNote ?: return
-        viewModelScope.launch {
-            val targetId = suggestion.targetId ?: run {
-                repository.createNote(
-                    title = suggestion.targetTitle,
-                    content = "# ${suggestion.targetTitle}\nLinked concept from ${currentNote.title}",
-                    type = NoteType.DOC,
-                    colorHex = "#6366F1"
-                )
+        val targetId = suggestion.targetId
+        if (targetId == null || allNotes.value.none { it.id == targetId }) {
+            _uiState.update {
+                it.copy(userNotice = "That Assistant link no longer points to an existing note")
             }
-            repository.createLink(currentNote.id, targetId)
-            _uiState.value = _uiState.value.copy(
-                aiSuggestedLinks = _uiState.value.aiSuggestedLinks.filter { it.targetTitle != suggestion.targetTitle },
-                userNotice = "Connected thread to [[${suggestion.targetTitle}]]"
-            )
+            return
+        }
+        viewModelScope.launch {
+            try {
+                repository.createLink(currentNote.id, targetId)
+                _uiState.update {
+                    it.copy(
+                        aiSuggestedLinks = it.aiSuggestedLinks.filter { item -> item.targetId != targetId },
+                        userNotice = "Connected thread to [[${suggestion.targetTitle}]]"
+                    )
+                }
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(userNotice = error.message ?: "Could not create Assistant link")
+                }
+            }
         }
     }
 }

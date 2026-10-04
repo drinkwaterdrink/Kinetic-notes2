@@ -36,6 +36,21 @@ class NoteDatabaseMigrationTest {
                     "(id,title,content,type,colorHex,tag,folder,x,y,isPinned,isLocked,dueDateText,codeSnippet,zIndex,strokeData,audioPath,audioDurationMs,createdAt,updatedAt) " +
                     "VALUES ('legacy-note','Legacy','body','DOC','#6366F1','Ideas','Ideas',12.0,24.0,0,0,NULL,NULL,10,NULL,NULL,0,100,200)"
             )
+            execSQL(
+                "INSERT INTO notes " +
+                    "(id,title,content,type,colorHex,tag,folder,x,y,isPinned,isLocked,dueDateText,codeSnippet,zIndex,strokeData,audioPath,audioDurationMs,createdAt,updatedAt) " +
+                    "VALUES ('legacy-target','Target','target body','DOC','#22C55E','Ideas','Ideas',80.0,96.0,1,0,NULL,NULL,11,NULL,NULL,0,101,201)"
+            )
+            execSQL(
+                "INSERT INTO note_links " +
+                    "(id,sourceId,targetId,colorHex,label) " +
+                    "VALUES ('legacy-link','legacy-note','legacy-target','#6366F1','related')"
+            )
+            execSQL(
+                "INSERT INTO checklist_items " +
+                    "(id,noteId,text,isChecked,orderIndex) " +
+                    "VALUES ('legacy-check','legacy-note','Keep this row',0,0)"
+            )
             close()
         }
 
@@ -54,6 +69,22 @@ class NoteDatabaseMigrationTest {
         migrated.query("SELECT name FROM note_groups WHERE id = (SELECT groupId FROM notes WHERE id = 'legacy-note')").use { cursor ->
             assertEquals(true, cursor.moveToFirst())
             assertEquals("Ideas", cursor.getString(0))
+        }
+        migrated.query("SELECT title, content, x, y, isPinned FROM notes WHERE id = 'legacy-target'").use { cursor ->
+            assertEquals(true, cursor.moveToFirst())
+            assertEquals("Target", cursor.getString(0))
+            assertEquals("target body", cursor.getString(1))
+            assertEquals(80.0, cursor.getDouble(2), 0.001)
+            assertEquals(96.0, cursor.getDouble(3), 0.001)
+            assertEquals(1, cursor.getInt(4))
+        }
+        migrated.query("SELECT COUNT(*) FROM note_links WHERE id = 'legacy-link'").use { cursor ->
+            assertEquals(true, cursor.moveToFirst())
+            assertEquals(1, cursor.getInt(0))
+        }
+        migrated.query("SELECT text FROM checklist_items WHERE id = 'legacy-check'").use { cursor ->
+            assertEquals(true, cursor.moveToFirst())
+            assertEquals("Keep this row", cursor.getString(0))
         }
         migrated.close()
     }

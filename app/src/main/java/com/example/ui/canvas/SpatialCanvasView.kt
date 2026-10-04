@@ -671,7 +671,7 @@ fun ReferenceNoteCardItem(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = note.content.ifBlank { "Tap to add tasks" },
+                                text = if (note.isLocked) "Locked note" else note.content.ifBlank { "Tap to add tasks" },
                                 color = KineticTextSecondary,
                                 fontSize = 10.sp,
                                 lineHeight = 14.sp,
@@ -690,8 +690,8 @@ fun ReferenceNoteCardItem(
                         ) {
                             Column(modifier = Modifier.padding(6.dp)) {
                                 Text(
-                                    text = note.codeSnippet ?: "const midX = (x1 + x2) / 2;",
-                                    color = Color(0xFF38BDF8),
+                                    text = if (note.isLocked) "Locked note" else note.codeSnippet ?: "const midX = (x1 + x2) / 2;",
+                                    color = if (note.isLocked) KineticTextMuted else Color(0xFF38BDF8),
                                     fontSize = 9.sp,
                                     fontFamily = FontFamily.Monospace,
                                     maxLines = 3,
