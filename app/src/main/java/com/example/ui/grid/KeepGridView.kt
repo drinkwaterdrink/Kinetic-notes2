@@ -44,10 +44,15 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -73,6 +78,8 @@ fun KeepGridView(
     folders: List<com.example.ui.viewmodel.FolderItem>,
     unlockedNoteIds: Set<String>,
     onSearchChange: (String) -> Unit,
+    /** Increment this token to open the search field and summon the keyboard. */
+    requestSearchFocusToken: Int = 0,
     onFolderSelect: (String) -> Unit,
     onNoteClick: (NoteEntity) -> Unit,
     onTogglePin: (NoteEntity) -> Unit,
@@ -80,6 +87,15 @@ fun KeepGridView(
 ) {
     val pinnedNotes = notes.filter { it.isPinned }
     val otherNotes = notes.filter { !it.isPinned }
+    val searchFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(requestSearchFocusToken) {
+        if (requestSearchFocusToken > 0) {
+            searchFocusRequester.requestFocus()
+            keyboardController?.show()
+        }
+    }
 
     Column(
         modifier = modifier
@@ -127,6 +143,7 @@ fun KeepGridView(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
+                .focusRequester(searchFocusRequester)
                 .testTag("input_search_notes")
         )
 

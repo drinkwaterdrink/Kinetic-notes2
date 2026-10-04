@@ -68,6 +68,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -131,6 +132,7 @@ fun KineticCanvasApp(viewModel: NotesViewModel) {
     var folderMenuExpanded by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var searchFocusRequestToken by remember { mutableIntStateOf(0) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -199,6 +201,7 @@ fun KineticCanvasApp(viewModel: NotesViewModel) {
                         folders = customFolders,
                         unlockedNoteIds = uiState.unlockedNoteIds,
                         onSearchChange = { viewModel.setSearchQuery(it) },
+                        requestSearchFocusToken = searchFocusRequestToken,
                         onFolderSelect = { name ->
                             viewModel.selectGroup(customFolders.firstOrNull { it.name.equals(name, ignoreCase = true) }?.id)
                         },
@@ -311,7 +314,10 @@ fun KineticCanvasApp(viewModel: NotesViewModel) {
                     Spacer(modifier = Modifier.weight(1f))
 
                     IconButton(
-                        onClick = { viewModel.setViewMode(VaultViewMode.GRID) },
+                        onClick = {
+                            viewModel.setViewMode(VaultViewMode.GRID)
+                            searchFocusRequestToken++
+                        },
                         modifier = Modifier.size(44.dp).testTag("btn_search_notes")
                     ) {
                         Icon(Icons.Default.Search, contentDescription = "Search notes", tint = KineticTextSecondary, modifier = Modifier.size(19.dp))
