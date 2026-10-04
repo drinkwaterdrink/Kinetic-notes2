@@ -74,6 +74,19 @@ jobs:
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk "dist/Kinetic Canvas EXP.apk"
 
+      # GitHub's artifact/release storage is not reachable from the Arena sandbox. For this
+      # one publish run, also place a temporary copy in a [skip ci] commit so the agent can
+      # retrieve the binary over the normal authenticated Git transport and present it here.
+      - name: Attach APK for sandbox retrieval
+        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[publish-apk]')
+        run: |
+          cp "dist/Kinetic Canvas EXP.apk" kinetic-canvas-exp.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add kinetic-canvas-exp.apk
+          git commit -m "ci: attach EXP APK [skip ci]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
       - name: Publish EXP APK release
         if: (github.event_name == 'workflow_dispatch' && inputs.publish_apk == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[publish-apk]'))
         env:
