@@ -55,6 +55,9 @@ The plan explicitly defers encryption/authentication, durable draft generations,
 | Expose `app/schemas` as Android-test assets and add connected migration/persistence CI stage | A-013 | Done; CI stage attempted but not green |
 | Opt out of automatic cloud/device backup until portable recovery is implemented | A-015 | Done |
 | Use configured stable EXP signing secret when present and block publication without it | A-014 | Done; secret unavailable here |
+| Couple provider cancellation to OkHttp call cancellation and test missing/HTTP/empty/valid responses | A-001/A-025 | Done; unit tests pass in CI |
+| Mask locked checklist/code previews, keep Graph refresh privacy-safe, and reject unknown AI link targets | A-002/A-003/A-024 | Done; source reviewed; no manual device run |
+| Strengthen migration fixture to verify notes, links, checklist rows, and metadata survive v2→v3 | A-013 | Done; connected test remains blocked by hosted emulator stage |
 | Add genuine Gradle launcher/JAR | A-026 | Not implemented; tooling unavailable and no safe wrapper artifact is present |
 
 ## I-001 acceptance and verification ledger
@@ -63,14 +66,14 @@ These are the acceptance checks available from the request and plan mapping. Pac
 
 | Criterion | Status | Evidence / remaining issue |
 |---|---|---|
-| No missing-key/provider/empty-response path reports fabricated AI success | **Passed (CI/source)** | `GeminiService` returns explicit failures and the build/unit/lint stage passed in CI runs `37230585818` and `37233108051`; no live provider call was made. |
-| Failed AI actions leave note content unchanged and expose an error | **Passed (CI/source)** | Repository/ViewModel failure paths preserve the existing note and set a visible `userNotice`; build/unit/lint passed, but no device/manual run was performed. |
-| No fake audio transcription is offered by the timer-only prototype | **Passed (source)** | `VoiceMemoRecorder` transcription control is disabled and says audio bytes are not stored. |
-| Locked notes are not called encrypted and protected text is excluded from sensitive derived views | **Passed (source)** | UI copy changed to “Locked note”; search/Graph/AI eligibility checks exclude locked notes unless in the existing temporary-unlock set. This is not encryption. |
+| No missing-key/provider/empty-response path reports fabricated AI success | **Passed** | `GeminiServiceTruthfulnessTest` exercises missing configuration, HTTP 503, empty candidates, and usable content; the build/unit/lint stage passed in CI run `37234389288`. No live provider call was made. |
+| Failed AI actions leave note content unchanged and expose an error | **Passed** | Provider failures clear stale AI output, stop loading, and set `userNotice`; protected-note actions are rejected before prompting; no device/manual run was performed. |
+| No fake audio transcription is offered by the timer-only prototype | **Passed** | `VoiceMemoRecorder` transcription control is disabled, `NoteRepository.transcribeAudioMemo` returns an explicit unsupported failure, and the UI says audio bytes are not stored. |
+| Locked notes are not called encrypted and protected text is excluded from sensitive derived views | **Passed** | UI copy says “Locked note”; canvas checklist/code previews are masked; search, Graph refreshes, and AI eligibility exclude locked notes unless temporarily unlocked. This is not encryption. |
 | No destructive database migration or data-bearing uninstall | **Passed (source)** | No database schema version bump or destructive fallback added in I-001; current explicit 2→3 migration remains. |
 | Room migration assets/instrumentation are configured | **Passed (source)** | `androidTest` assets source points at generated `app/schemas`; CI includes `connectedDebugAndroidTest`; historical v2 schema asset remains a documented deviation. |
-| Build, unit tests, and lint complete | **Passed** | `testDebugUnitTest assembleDebug lintDebug` passed in CI before the connected stage in run `37233108051` (and the preceding corrected-label runs). |
-| Migration test runs in the green CI job | **Failed** | The connected stage exits nonzero in `37229480548`, `37230585818`, `37231028979`, `37231487318`, `37231909132`, `37232246940`, `37232697677`, and `37233108051`; build/unit/lint passes first. CI reports a KSP AWT `ApplicationManager.getApplication()` null exception, while the raw emulator log is unavailable from the sandbox (GitHub log/artifact retrieval returns EOF), so this is recorded as a CI/tooling blocker rather than a claimed migration-data failure. |
+| Build, unit tests, and lint complete | **Passed** | `testDebugUnitTest assembleDebug lintDebug` passed in CI before the connected stage in post-fix run `37234389288`, including the new provider truthfulness tests. |
+| Migration test runs in the green CI job | **Failed** | The connected stage exits nonzero in `37229480548`, `37230585818`, `37231028979`, `37231487318`, `37231909132`, `37232246940`, `37232697677`, `37233108051`, and the post-fix run `37234389288`; build/unit/lint passes first. The latest run reports only a generic emulator-step shell failure; earlier runs also reported a KSP AWT `ApplicationManager.getApplication()` null exception. Raw emulator output is unavailable from the sandbox (GitHub log/artifact retrieval returns EOF), so this is recorded as a CI/tooling blocker rather than a claimed migration-data failure. The fixture now verifies note metadata, links, and checklist rows in addition to group backfill, but the hosted device has not executed it successfully. |
 | Automatic Android backup does not silently copy current plaintext workspace | **Passed (source)** | `backup_rules.xml` and `data_extraction_rules.xml` exclude database/files/preferences until I-016 export/restore exists. |
 | APK release publication cannot use a fresh ephemeral signing certificate | **Passed (source)** | CI uses `KX_EXP_KEYSTORE_B64` when configured and fails the publish path if it is absent. Ordinary validation APKs remain explicitly ephemeral. |
 | Stable EXP signing continuity is verified | **Not verified** | `KX_EXP_KEYSTORE_B64` is unavailable here; the stable-key release path was correctly not invoked. |
@@ -90,9 +93,9 @@ These are the acceptance checks available from the request and plan mapping. Pac
 
 ### CI evidence for this checkpoint
 
-- `gradle testDebugUnitTest assembleDebug lintDebug` passed before the connected stage in runs `37230585818`, `37231028979`, `37231487318`, `37231909132`, `37232246940`, `37232697677`, and `37233108051`.
-- `gradle connectedDebugAndroidTest --stacktrace --no-configuration-cache --no-daemon` was attempted inside `reactivecircus/android-emulator-runner@v2` in those same runs and did not produce a green job.
-- The original baseline run `37229480548` also passed build/unit/lint and failed in connected verification. Later runs provide the KSP `ApplicationManager.getApplication()` null annotation, but the raw emulator output could not be retrieved from this sandbox because GitHub log/artifact downloads returned EOF.
+- `gradle testDebugUnitTest assembleDebug lintDebug` passed before the connected stage in post-fix run `37234389288`, including `GeminiServiceTruthfulnessTest`; the earlier corrected-label runs also passed this stage.
+- `gradle connectedDebugAndroidTest --stacktrace --no-configuration-cache --no-daemon` was re-run inside `reactivecircus/android-emulator-runner@v2` in `37234389288` and did not produce a green job.
+- The original baseline run `37229480548` and subsequent runs also passed build/unit/lint and failed in connected verification. The latest run reports a generic emulator-step shell failure; earlier runs provide the KSP `ApplicationManager.getApplication()` null annotation, but the raw emulator output could not be retrieved from this sandbox because GitHub log/artifact downloads returned EOF.
 - APK packaging, stable-signing continuity, and release publication were not reached after the connected-stage failure. Release publication remains guarded by `KX_EXP_KEYSTORE_B64` and was not invoked.
 - Local verification remains unavailable: the repository has no `gradlew`/wrapper JAR and the sandbox has no Java, Gradle, adb, or kotlinc.
 
