@@ -117,6 +117,7 @@ fun NoteDetailSheet(
         mutableStateOf(if (note.type == NoteType.CHECKLIST) "checklist" else "doc")
     }
     var showFolderMenu by remember { mutableStateOf(false) }
+    var showDeleteConfirmation by remember(note.id) { mutableStateOf(false) }
 
     val accentColor = try {
         Color(android.graphics.Color.parseColor(note.colorHex))
@@ -505,17 +506,30 @@ fun NoteDetailSheet(
 
                 // Archive Note
                 IconButton(
-                    onClick = onDeleteNote,
-                    modifier = Modifier.size(32.dp)
+                    onClick = { showDeleteConfirmation = true },
+                    modifier = Modifier
+                        .size(32.dp)
+                        .testTag("btn_delete_note")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,
-                        contentDescription = "Archive",
+                        contentDescription = "Delete",
                         tint = Color(0xFFF87171),
                         modifier = Modifier.size(16.dp)
                     )
                 }
             }
         }
+    }
+
+    if (showDeleteConfirmation) {
+        DeleteNoteConfirmationDialog(
+            noteTitle = note.title,
+            onDismissRequest = { showDeleteConfirmation = false },
+            onConfirm = {
+                showDeleteConfirmation = false
+                onDeleteNote()
+            }
+        )
     }
 }

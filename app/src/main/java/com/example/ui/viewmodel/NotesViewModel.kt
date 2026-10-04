@@ -147,6 +147,7 @@ class NotesViewModel(
     private val _uiState = MutableStateFlow(NotesUiState())
     val uiState: StateFlow<NotesUiState> = _uiState.asStateFlow()
     private var lastAiUndo: AiUndo? = null
+    private val deletingNoteIds = mutableSetOf<String>()
 
     /** Durable groups, straight from Room. */
     val groups: StateFlow<List<NoteGroupEntity>> = repository.allGroups
@@ -512,21 +513,35 @@ class NotesViewModel(
         saveEditorDraft(noteId, title, content) { closeFocusSheet() }
     }
 
-    fun deleteSelectedNote() {
-        val note = _uiState.value.selectedNote ?: return
+    private fun deleteNoteAndCloseIfSelected(id: String) {
+        // The dialog also guards its confirm button, but keep the invariant at the ViewModel
+        // boundary so multiple UI entry points cannot dispatch duplicate destructive work.
+        if (!deletingNoteIds.add(id)) return
         viewModelScope.launch {
-            repository.deleteNote(note.id)
-            closeFocusSheet()
+            try {
+                repository.deleteNote(id)
+                if (_uiState.value.selectedNote?.id == id) {
+                    closeFocusSheet()
+                }
+                _uiState.update { it.copy(userNotice = "Note deleted.") }
+            } catch (error: Exception) {
+                // Keep the editor mounted on failure; its local draft remains intact and the
+                // snackbar gives the user a visible retry/error path.
+                _uiState.update {
+                    it.copy(userNotice = "Could not delete note: ${error.message ?: "unknown error"}")
+                }
+            } finally {
+                deletingNoteIds.remove(id)
+            }
         }
     }
 
+    fun deleteSelectedNote() {
+        _uiState.value.selectedNote?.let { deleteNoteAndCloseIfSelected(it.id) }
+    }
+
     fun deleteNoteById(id: String) {
-        viewModelScope.launch {
-            repository.deleteNote(id)
-            if (_uiState.value.selectedNote?.id == id) {
-                closeFocusSheet()
-            }
-        }
+        deleteNoteAndCloseIfSelected(id)
     }
 
     fun togglePin(note: NoteEntity) {

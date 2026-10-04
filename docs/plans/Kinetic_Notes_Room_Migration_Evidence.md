@@ -23,11 +23,18 @@ This record supports I-001 migration review. It is evidence, not a replacement f
 
 This fixture is deliberately labeled as reconstructed evidence. It does not prove that the fixture is byte-for-byte identical to an historical production schema.
 
+## Supported installed database versions
+
+- **Version 3:** current schema; opens directly.
+- **Version 2:** supported through the explicit `NoteDatabase.MIGRATION_2_3` path and the migration instrumentation.
+- **Version 1 and earlier:** no migration is registered; these versions are not supported by the current app and must be reported as a compatibility blocker rather than silently upgraded.
+
 ## Verification status
 
 - Room schema generation is configured with `room.schemaLocation`.
 - Generated schemas are supplied to Android-test assets from `app/schemas` during CI.
-- The migration test is mandatory in the CI workflow and is now run with phase-separated emulator diagnostics.
-- Hosted run `37239195565` built and uploaded the APK, then the emulator action failed before its script started. Its diagnostic `emulator-runner-status.log` records `runner_outcome=failure` and `phase_logs=absent`; the Android-test compilation and migration assertions did not execute. Migration correctness therefore remains **Not verified**, not silently waived.
+- The migration test is mandatory in the CI workflow.
+- The previous hosted run `37239195565` built and uploaded the APK, then its emulator action failed before its script started. Its diagnostic `emulator-runner-status.log` records `runner_outcome=failure` and `phase_logs=absent`; the Android-test compilation and migration assertions did not execute. Migration correctness therefore remains **Not verified**, not silently waived.
+- The bounded follow-up workflow separates Android-test compilation, emulator image preparation, emulator boot, migration execution, logcat collection, and report upload. It must complete a fresh run before AC4 can change status.
 
 A genuine historical v2 schema can only be promoted to verified evidence if it is recovered from a trusted repository artifact, a known-good user database/export, or a successful test run using the actual historical schema.

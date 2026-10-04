@@ -194,6 +194,7 @@ fun FullScreenNoteEditorScreen(
     }
     var showFolderMenu by remember { mutableStateOf(false) }
     var showColorMenu by remember { mutableStateOf(false) }
+    var showDeleteConfirmation by remember(note.id) { mutableStateOf(false) }
 
     val accentColor = try {
         Color(android.graphics.Color.parseColor(note.colorHex))
@@ -824,14 +825,27 @@ fun FullScreenNoteEditorScreen(
 
                     // Delete Note
                     IconButton(
-                        onClick = onDeleteNote,
-                        modifier = Modifier.size(36.dp)
+                        onClick = { showDeleteConfirmation = true },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .testTag("btn_delete_note")
                     ) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
                     }
                 }
             }
         }
+    }
+
+    if (showDeleteConfirmation) {
+        DeleteNoteConfirmationDialog(
+            noteTitle = note.title,
+            onDismissRequest = { showDeleteConfirmation = false },
+            onConfirm = {
+                showDeleteConfirmation = false
+                onDeleteNote()
+            }
+        )
     }
 }
 
