@@ -11,7 +11,7 @@
 
 ## Plan reconciliation
 
-The supplied raw text contains the audit, decisions, feature contracts, journeys, screens, visual system, state ownership, domain invariants, migration/file protocols, and the beginning of Board engineering. It does **not** include a separately enumerated I-001 packet section or packet-specific acceptance table. The I-001 scope below is therefore mapped conservatively from the explicit user request (“Truthful, reproducible baseline”) and the plan's I-001 remedies:
+The repository copy contains the audit, decisions, feature contracts, journeys, screens, visual system, state ownership, domain invariants, migration/file protocols, and the beginning of Board engineering. It does **not** include a separately enumerated I-001 packet section or packet-specific acceptance table. The text supplied in the latest request is a separate 56-section **Lumiverse lorebook** document, not the Kinetic Notes masterplan: it contains no I-001 through I-021 packets, Kinetic traceability matrix, or final Kinetic I-001 kickoff prompt. No matching attached Kinetic file is present in the workspace, so replacing the Kinetic plan with that unrelated document would corrupt the governing scope. The I-001 scope below is therefore mapped conservatively from the explicit Kinetic request and the plan's I-001 remedies until the complete Kinetic attachment is supplied:
 
 - A-001 / A-009 / A-025: AI/provider failures must be honest; no canned success or simulated transcription.
 - A-002 / A-003: the existing Boolean lock must not be represented as encryption; protected text must not enter search/Graph/AI previews when not unlocked.
@@ -58,7 +58,9 @@ The plan explicitly defers encryption/authentication, durable draft generations,
 | Couple provider cancellation to OkHttp call cancellation and test missing/HTTP/empty/valid responses | A-001/A-025 | Done; unit tests pass in CI |
 | Mask locked checklist/code previews, keep Graph refresh privacy-safe, and reject unknown AI link targets | A-002/A-003/A-024 | Done; source reviewed; no manual device run |
 | Strengthen migration fixture to verify notes, links, checklist rows, and metadata survive v2→v3 | A-013 | Done; connected test remains blocked by hosted emulator stage |
-| Add genuine Gradle launcher/JAR | A-026 | Not implemented; tooling unavailable and no safe wrapper artifact is present |
+| Separate emulator startup, Android-test compilation, migration execution, and reports | A-013 | Implemented; the next CI run will upload phase logs and Android-test reports even when the emulator step fails |
+| Upload a metadata-bearing APK artifact without committing binaries | A-014 | Implemented; artifact is emitted before migration, while publication remains gated on a successful mandatory migration job |
+| Add genuine Gradle launcher/JAR | A-026 | Done; official Gradle v9.3.1 `gradlew`, `gradlew.bat`, and wrapper JAR are checked in; wrapper JAR SHA-256 is `b3a875ddc1f044746e1b1a55f645584505f4a10438c1afea9f15e92a7c42ec13`, and the distribution checksum is pinned in `gradle-wrapper.properties` |
 
 ## I-001 acceptance and verification ledger
 
@@ -78,7 +80,7 @@ These are the acceptance checks available from the request and plan mapping. Pac
 | APK release publication cannot use a fresh ephemeral signing certificate | **Passed (source)** | CI uses `KX_EXP_KEYSTORE_B64` when configured and fails the publish path if it is absent. Ordinary validation APKs remain explicitly ephemeral. |
 | Stable EXP signing continuity is verified | **Not verified** | `KX_EXP_KEYSTORE_B64` is unavailable here; the stable-key release path was correctly not invoked. |
 | Installable APK packaging completes | **Not verified** | The connected stage failed first, so the package/upload steps were skipped in the hosted runs. |
-| A reproducible local Gradle command is available | **Failed** | `gradlew` and `gradle-wrapper.jar` are absent; local `java`, `gradle`, `adb`, and `kotlinc` are not on PATH. This is an infrastructure gap, not an app test failure. |
+| A reproducible local Gradle command is available | **Not verified** | The official `./gradlew` launcher, Windows launcher, checksum-pinned wrapper JAR, and Gradle 9.3.1 distribution URL are now checked in. Local execution remains unavailable because `java`, `adb`, and `kotlinc` are not on PATH. |
 | Existing notes, links, checklists, folders, and installed-app data are preserved | **Passed (scope/source)** | I-001 introduced no destructive migration, delete, reset, or uninstall operation. Device data preservation cannot be manually exercised in this environment. |
 | No later packet was implemented | **Passed (scope review)** | No encryption, Trash/history, backup/restore package, structured-document conversion, attachments, stacks, provider framework, or sync packet was added. |
 
@@ -89,7 +91,7 @@ These are the acceptance checks available from the request and plan mapping. Pac
 - `git status --short --branch` at start: branch was `arena/01a10467-kinetic-notes2`; `HEAD` was `fde9c77`; prior implementation remained uncommitted.
 - `git cat-file -t a8e193c...`: audited commit object was not present locally.
 - `find /home/user/uploads`: attachment mount was unavailable; plan was saved from the raw text supplied in chat.
-- Local build was not run: repository has no `./gradlew`, and the sandbox has no `java`, `gradle`, `adb`, or `kotlinc` on PATH.
+- Local build was not run: the official `./gradlew` wrapper is now present, but the sandbox still has no `java`, `adb`, or `kotlinc` on PATH.
 
 ### CI evidence for this checkpoint
 
@@ -97,7 +99,7 @@ These are the acceptance checks available from the request and plan mapping. Pac
 - `gradle connectedDebugAndroidTest --stacktrace --no-configuration-cache --no-daemon` was re-run inside `reactivecircus/android-emulator-runner@v2` in `37234389288` and did not produce a green job.
 - The original baseline run `37229480548` and subsequent runs also passed build/unit/lint and failed in connected verification. The latest run reports a generic emulator-step shell failure; earlier runs provide the KSP `ApplicationManager.getApplication()` null annotation, but the raw emulator output could not be retrieved from this sandbox because GitHub log/artifact downloads returned EOF.
 - APK packaging, stable-signing continuity, and release publication were not reached after the connected-stage failure. Release publication remains guarded by `KX_EXP_KEYSTORE_B64` and was not invoked.
-- Local verification remains unavailable: the repository has no `gradlew`/wrapper JAR and the sandbox has no Java, Gradle, adb, or kotlinc.
+- Local verification remains unavailable: the sandbox has no Java, adb, or kotlinc; CI now invokes the checked-in checksum-pinned `./gradlew` wrapper.
 
 ## Deviations and remaining issues
 
