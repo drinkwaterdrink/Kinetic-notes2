@@ -19,3 +19,6 @@ debug.keystore
 
 # Room exports generated schema JSON here; keep build output out of source control.
 /app/schemas
+
+# Local/generated APK deliverables
+/*.apk
