@@ -124,7 +124,7 @@ class NotesViewModel(
 
     /** Durable groups, straight from Room. */
     val groups: StateFlow<List<NoteGroupEntity>> = repository.allGroups
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** "All Notes" + every durable group, as consumed by the toolbar / grid / editor. */
     val customFolders: StateFlow<List<FolderItem>> = groups
@@ -133,12 +133,12 @@ class NotesViewModel(
                 FolderItem(id = it.id, name = it.name, colorHex = it.colorHex, icon = it.icon, isCustom = true)
             }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), listOf(FolderItem.AllNotes))
+        .stateIn(viewModelScope, SharingStarted.Eagerly, listOf(FolderItem.AllNotes))
 
     /** Display name of the active group filter. */
     val selectedGroupName: StateFlow<String> = combine(groups, _uiState) { list, state ->
         list.firstOrNull { it.id == state.selectedGroupId }?.name ?: "All Notes"
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "All Notes")
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, "All Notes")
 
     // Filtered notes based on active group, tag, and search
     val filteredNotes: StateFlow<List<NoteEntity>> = combine(

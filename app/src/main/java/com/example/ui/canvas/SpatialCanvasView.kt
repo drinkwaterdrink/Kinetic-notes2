@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -392,6 +393,8 @@ fun SpatialCanvasView(
             shadowElevation = 10.dp,
             modifier = Modifier
                 .align(Alignment.BottomStart)
+                .navigationBarsPadding()
+                .padding(start = 12.dp, bottom = 10.dp)
                 .testTag("zoom_hud_capsule")
         ) {
             Row(
