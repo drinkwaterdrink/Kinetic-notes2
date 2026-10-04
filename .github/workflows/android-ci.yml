@@ -242,7 +242,7 @@ jobs:
 
       - name: Instrumented migration and persistence checks
         id: instrumentation
-        if: steps.emulator_start.outcome == 'success'
+        if: always() && steps.emulator_start.outcome == 'success'
         continue-on-error: true
         run: |
           set +e
@@ -278,9 +278,9 @@ jobs:
           export ANDROID_AVD_HOME="$RUNNER_TEMP/kinetic-avd"
           export ANDROID_SDK_HOME="$RUNNER_TEMP/kinetic-sdk-home"
           adb_bin="$ANDROID_HOME/platform-tools/adb"
-          "$adb_bin" logcat -d > app/build/ci-instrumentation/emulator-logcat-final.log 2>&1 || true
-          "$adb_bin" shell dumpsys activity processes > app/build/ci-instrumentation/emulator-processes.log 2>&1 || true
-          "$adb_bin" emu kill >> app/build/ci-instrumentation/emulator-shutdown.log 2>&1 || true
+          timeout 30s "$adb_bin" logcat -d > app/build/ci-instrumentation/emulator-logcat-final.log 2>&1 || true
+          timeout 30s "$adb_bin" shell dumpsys activity processes > app/build/ci-instrumentation/emulator-processes.log 2>&1 || true
+          timeout 30s "$adb_bin" emu kill >> app/build/ci-instrumentation/emulator-shutdown.log 2>&1 || true
           if [ -f app/build/ci-instrumentation/emulator.pid ]; then
             kill "$(cat app/build/ci-instrumentation/emulator.pid)" 2>/dev/null || true
           fi
