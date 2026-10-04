@@ -179,11 +179,16 @@ jobs:
               "system-images;android-35;google_apis;x86_64"
             image_status=$?
             echo "sdkmanager_status=$image_status"
+            export ANDROID_AVD_HOME="$RUNNER_TEMP/kinetic-avd"
+            export ANDROID_SDK_HOME="$RUNNER_TEMP/kinetic-sdk-home"
+            mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_SDK_HOME"
+            echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME"
             echo "no" | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd \
               --force --name kinetic-api35 --package "system-images;android-35;google_apis;x86_64" \
               --device "pixel_2"
             avd_status=$?
             echo "avdmanager_status=$avd_status"
+            "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" list avd
             exit "$((image_status != 0 || avd_status != 0))"
           } > app/build/ci-instrumentation/emulator-image-preparation.log 2>&1
           cat app/build/ci-instrumentation/emulator-image-preparation.log
@@ -199,8 +204,14 @@ jobs:
           : > "$log"
           echo "phase=emulator-startup" >> "$log"
           date -u >> "$log"
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/kinetic-avd"
+          export ANDROID_SDK_HOME="$RUNNER_TEMP/kinetic-sdk-home"
+          adb_bin="$ANDROID_HOME/platform-tools/adb"
           emulator_bin="$ANDROID_HOME/emulator/emulator"
-          adb start-server >> "$log" 2>&1
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$log"
+          echo "ANDROID_SDK_HOME=$ANDROID_SDK_HOME" >> "$log"
+          echo "adb_bin=$adb_bin" >> "$log"
+          "$adb_bin" start-server >> "$log" 2>&1
           "$emulator_bin" -avd kinetic-api35 -no-window -no-audio -no-boot-anim \
             -no-snapshot -gpu swiftshader_indirect -verbose >> "$log" 2>&1 &
           emulator_pid=$!
@@ -209,7 +220,7 @@ jobs:
           boot_completed=""
           deadline=$((SECONDS + 300))
           while [ "$SECONDS" -lt "$deadline" ]; do
-            boot_completed=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            boot_completed=$("$adb_bin" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
             if [ "$boot_completed" = "1" ]; then
               break
             fi
@@ -219,9 +230,9 @@ jobs:
             echo "boot_completed=$boot_completed"
             echo "phase=emulator-startup-summary"
             date -u
-            adb devices -l
-            adb shell getprop ro.build.version.sdk
-            adb shell getprop sys.boot_completed
+            "$adb_bin" devices -l
+            "$adb_bin" shell getprop ro.build.version.sdk
+            "$adb_bin" shell getprop sys.boot_completed
           } >> "$log" 2>&1
           if [ "$boot_completed" != "1" ]; then
             echo "Emulator did not report sys.boot_completed=1 within 300 seconds." >> "$log"
@@ -236,21 +247,24 @@ jobs:
         run: |
           set +e
           mkdir -p app/build/ci-instrumentation
-          adb logcat -c >/dev/null 2>&1 || true
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/kinetic-avd"
+          export ANDROID_SDK_HOME="$RUNNER_TEMP/kinetic-sdk-home"
+          adb_bin="$ANDROID_HOME/platform-tools/adb"
+          "$adb_bin" logcat -c >/dev/null 2>&1 || true
           ./gradlew :app:connectedDebugAndroidTest \
             -Pandroid.testInstrumentationRunnerArguments.class=com.example.NoteDatabaseMigrationTest \
             --stacktrace --no-configuration-cache --no-daemon --console=plain \
             > app/build/ci-instrumentation/migration-test-execution.log 2>&1
           migration_status=$?
-          adb logcat -d > app/build/ci-instrumentation/emulator-logcat.log 2>&1 || true
+          "$adb_bin" logcat -d > app/build/ci-instrumentation/emulator-logcat.log 2>&1 || true
           {
             echo "phase=post-test"
             echo "android_test_compilation_status=${{ steps.android_test_compile.outcome }}"
             echo "emulator_start_status=${{ steps.emulator_start.outcome }}"
             echo "migration_test_status=$migration_status"
             date -u
-            adb devices -l
-            adb shell getprop sys.boot_completed
+            "$adb_bin" devices -l
+            "$adb_bin" shell getprop sys.boot_completed
           } > app/build/ci-instrumentation/test-summary.log 2>&1
           cat app/build/ci-instrumentation/emulator-startup.log
           cat app/build/ci-instrumentation/migration-test-execution.log
@@ -261,9 +275,12 @@ jobs:
         if: always()
         run: |
           mkdir -p app/build/ci-instrumentation
-          adb logcat -d > app/build/ci-instrumentation/emulator-logcat-final.log 2>&1 || true
-          adb shell dumpsys activity processes > app/build/ci-instrumentation/emulator-processes.log 2>&1 || true
-          adb emu kill >> app/build/ci-instrumentation/emulator-shutdown.log 2>&1 || true
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/kinetic-avd"
+          export ANDROID_SDK_HOME="$RUNNER_TEMP/kinetic-sdk-home"
+          adb_bin="$ANDROID_HOME/platform-tools/adb"
+          "$adb_bin" logcat -d > app/build/ci-instrumentation/emulator-logcat-final.log 2>&1 || true
+          "$adb_bin" shell dumpsys activity processes > app/build/ci-instrumentation/emulator-processes.log 2>&1 || true
+          "$adb_bin" emu kill >> app/build/ci-instrumentation/emulator-shutdown.log 2>&1 || true
           if [ -f app/build/ci-instrumentation/emulator.pid ]; then
             kill "$(cat app/build/ci-instrumentation/emulator.pid)" 2>/dev/null || true
           fi
