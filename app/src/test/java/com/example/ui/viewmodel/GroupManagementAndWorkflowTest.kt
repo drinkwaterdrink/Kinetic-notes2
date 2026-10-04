@@ -44,7 +44,7 @@ class GroupManagementAndWorkflowTest {
         database.close()
     }
 
-    private fun awaitUntil(timeoutMs: Long = 5_000, condition: () -> Boolean): Boolean {
+    private suspend fun awaitUntil(timeoutMs: Long = 5_000, condition: suspend () -> Boolean): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             org.robolectric.shadows.ShadowLooper.idleMainLooper()

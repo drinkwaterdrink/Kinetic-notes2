@@ -421,7 +421,8 @@ class NotesViewModel(
         viewModelScope.launch {
             val savedAt = System.currentTimeMillis()
             try {
-                repository.saveNoteText(id = noteId, title = title, content = content, updatedAt = savedAt)
+                val rows = repository.saveNoteText(id = noteId, title = title, content = content, updatedAt = savedAt)
+                check(rows == 1) { "Note no longer exists" }
                 _uiState.update { state ->
                     val selected = state.selectedNote
                     state.copy(
@@ -433,6 +434,9 @@ class NotesViewModel(
                         editorSave = EditorSaveState(status = EditorSaveStatus.SAVED, lastSavedAt = savedAt)
                     )
                 }
+                // Only close after a successful durable write. On failure the draft remains
+                // in the editor and the visible ERROR state gives the user a retry path.
+                onSaved?.invoke()
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
@@ -442,8 +446,6 @@ class NotesViewModel(
                         )
                     )
                 }
-            } finally {
-                onSaved?.invoke()
             }
         }
     }

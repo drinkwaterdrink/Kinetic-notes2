@@ -470,6 +470,7 @@ fun KineticCanvasApp(viewModel: NotesViewModel) {
                             viewModel.saveEditorDraftAndClose(note.id, title, content)
                         },
                         onUpdateNote = { viewModel.updateSelectedNote(it) },
+                        onMoveToGroup = { groupId -> viewModel.moveNoteToGroup(note.id, groupId) },
                         onDeleteNote = { viewModel.deleteSelectedNote() },
                         onTogglePin = { viewModel.togglePin(note) },
                         onToggleLock = { viewModel.toggleLock(note) },

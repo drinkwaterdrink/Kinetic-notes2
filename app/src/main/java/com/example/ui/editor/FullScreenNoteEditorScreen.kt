@@ -99,6 +99,7 @@ fun FullScreenNoteEditorScreen(
     onSaveDraft: (title: String, content: String) -> Unit = { _, _ -> },
     onSaveAndClose: (title: String, content: String) -> Unit = { _, _ -> },
     onUpdateNote: (NoteEntity) -> Unit,
+    onMoveToGroup: (String?) -> Unit = {},
     onDeleteNote: () -> Unit,
     onTogglePin: () -> Unit,
     onToggleLock: () -> Unit,
@@ -128,7 +129,7 @@ fun FullScreenNoteEditorScreen(
     }
 
     fun flushNow() {
-        if (isDirty) {
+        if (isDirty || saveStatus == EditorSaveStatus.ERROR) {
             isDirty = false
             onSaveDraft(currentTitle, currentContent)
         }
@@ -144,7 +145,7 @@ fun FullScreenNoteEditorScreen(
 
     // Safe Back: flush the pending draft, and only leave once the write has been issued.
     BackHandler {
-        if (isDirty) {
+        if (isDirty || saveStatus == EditorSaveStatus.ERROR) {
             isDirty = false
             onSaveAndClose(currentTitle, currentContent)
         } else {
@@ -153,7 +154,7 @@ fun FullScreenNoteEditorScreen(
     }
 
     fun closeWithFlush() {
-        if (isDirty) {
+        if (isDirty || saveStatus == EditorSaveStatus.ERROR) {
             isDirty = false
             onSaveAndClose(currentTitle, currentContent)
         } else {
@@ -166,6 +167,12 @@ fun FullScreenNoteEditorScreen(
     fun updateMetadata(updated: NoteEntity) {
         isDirty = false
         onUpdateNote(updated.copy(title = currentTitle, content = currentContent))
+    }
+
+    /** Formatting controls update the local draft; autosave remains the only text write path. */
+    fun applyContentChange(updatedContent: String) {
+        content = updatedContent
+        onDraftEdited()
     }
     var activeTab by remember(note.id) {
         mutableStateOf(if (note.type == NoteType.CHECKLIST) "checklist" else "doc")
@@ -274,7 +281,7 @@ fun FullScreenNoteEditorScreen(
                             .background(Color(0xFF141824))
                             .border(1.dp, Color(0x20FFFFFF), RoundedCornerShape(8.dp))
                     ) {
-                        availableFolders.filter { it.name != "All Notes" }.forEach { folder ->
+                        availableFolders.forEach { folder ->
                             val folderCol = try {
                                 Color(android.graphics.Color.parseColor(folder.colorHex))
                             } catch (e: Exception) {
@@ -295,7 +302,7 @@ fun FullScreenNoteEditorScreen(
                                 },
                                 onClick = {
                                     showFolderMenu = false
-                                    updateMetadata(note.copy(folder = folder.name, tag = folder.name))
+                                    onMoveToGroup(folder.id)
                                 }
                             )
                         }
@@ -635,7 +642,7 @@ fun FullScreenNoteEditorScreen(
                         onClick = {
                             val updated = "$content**bold**"
                             content = updated
-                            onUpdateNote(note.copy(content = updated))
+                            applyContentChange(updated)
                         },
                         modifier = Modifier.size(36.dp)
                     ) {
@@ -647,7 +654,7 @@ fun FullScreenNoteEditorScreen(
                         onClick = {
                             val updated = "$content*italic*"
                             content = updated
-                            onUpdateNote(note.copy(content = updated))
+                            applyContentChange(updated)
                         },
                         modifier = Modifier.size(36.dp)
                     ) {
@@ -659,7 +666,7 @@ fun FullScreenNoteEditorScreen(
                         onClick = {
                             val updated = "$content\n## Heading\n"
                             content = updated
-                            onUpdateNote(note.copy(content = updated))
+                            applyContentChange(updated)
                         },
                         modifier = Modifier.size(36.dp)
                     ) {
@@ -671,7 +678,7 @@ fun FullScreenNoteEditorScreen(
                         onClick = {
                             val updated = "$content\n> Quote block\n"
                             content = updated
-                            onUpdateNote(note.copy(content = updated))
+                            applyContentChange(updated)
                         },
                         modifier = Modifier.size(36.dp)
                     ) {
@@ -686,7 +693,7 @@ fun FullScreenNoteEditorScreen(
                             .clickable {
                                 val updated = "$content\n```typescript\n// code snippet\n```\n"
                                 content = updated
-                                onUpdateNote(note.copy(content = updated))
+                                applyContentChange(updated)
                             }
                             .padding(horizontal = 6.dp, vertical = 6.dp)
                     ) {
@@ -702,7 +709,7 @@ fun FullScreenNoteEditorScreen(
                             .clickable {
                                 val updated = "$content[[Link]]"
                                 content = updated
-                                onUpdateNote(note.copy(content = updated))
+                                applyContentChange(updated)
                             }
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {

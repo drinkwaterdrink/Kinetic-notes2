@@ -62,6 +62,11 @@ android {
   }
 }
 
+// Keep Room's versioned schemas available for migration review and tests.
+ksp {
+  arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 // Configure the Secrets Gradle Plugin to use .env and .env.example files
 // to match the convention used in Web projects.
 secrets {
