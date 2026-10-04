@@ -75,7 +75,7 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk "dist/Kinetic Canvas EXP.apk"
 
       - name: Publish EXP APK release
-        if: github.event_name == 'workflow_dispatch' && inputs.publish_apk == true
+        if: (github.event_name == 'workflow_dispatch' && inputs.publish_apk == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[publish-apk]'))
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
