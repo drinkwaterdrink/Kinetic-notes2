@@ -86,7 +86,7 @@ jobs:
           disable-animations: true
           script: |
             gradle --stop || true
-            gradle connectedDebugAndroidTest --stacktrace --no-configuration-cache --no-daemon --console=plain
+            gradle connectedDebugAndroidTest --stacktrace --no-configuration-cache --no-daemon --console=plain 2>&1 | tee -a ci.log
 
       - name: Package installable EXP APK
         run: |
