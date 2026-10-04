@@ -32,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,6 +67,7 @@ fun ObsidianGraphView(
     onNodeDrag: (nodeId: String, newPos: Offset) -> Unit,
     onNodeRelease: (nodeId: String) -> Unit,
     onOpenNote: (NoteEntity) -> Unit,
+    onViewportChanged: (width: Float, height: Float) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     var selectedNodeId by remember { mutableStateOf<String?>(null) }
@@ -81,6 +83,10 @@ fun ObsidianGraphView(
     ) {
         val width = constraints.maxWidth.toFloat()
         val height = constraints.maxHeight.toFloat()
+
+        LaunchedEffect(width, height) {
+            onViewportChanged(width, height)
+        }
 
         // Canvas rendering physics nodes and edges
         Canvas(
@@ -135,12 +141,9 @@ fun ObsidianGraphView(
                     )
                 }
         ) {
-            // Draw subtle ambient physics boundary ring
-            drawCircle(
-                color = Color(0x0C6366F1),
-                radius = 350f,
-                center = Offset(width / 2f, height / 2f)
-            )
+            // The graph is intentionally quiet when no node is selected. Avoid a large
+            // decorative orbit/boundary: it reads like an interactive object and competes
+            // with the actual knowledge graph on smaller screens.
 
             // Draw spring edges between nodes
             graphState.edges.forEach { edge ->

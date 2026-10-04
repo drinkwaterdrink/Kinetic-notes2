@@ -23,6 +23,8 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Draw
@@ -58,6 +60,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.input.ImeAction
 import com.example.data.local.NoteEntity
 import com.example.data.local.NoteType
 import com.example.ui.theme.KineticDarkBackground
@@ -74,13 +77,18 @@ import com.example.ui.theme.KineticTextSecondary
 fun KeepGridView(
     notes: List<NoteEntity>,
     searchQuery: String,
+    recentSearches: List<String> = emptyList(),
     selectedFolder: String,
     folders: List<com.example.ui.viewmodel.FolderItem>,
+    tags: List<String> = emptyList(),
+    selectedTag: String? = null,
     unlockedNoteIds: Set<String>,
     onSearchChange: (String) -> Unit,
+    onSearchSubmitted: (String) -> Unit = {},
     /** Increment this token to open the search field and summon the keyboard. */
     requestSearchFocusToken: Int = 0,
     onFolderSelect: (String) -> Unit,
+    onTagSelect: (String?) -> Unit = {},
     onNoteClick: (NoteEntity) -> Unit,
     onTogglePin: (NoteEntity) -> Unit,
     modifier: Modifier = Modifier
@@ -131,6 +139,8 @@ fun KeepGridView(
                 }
             },
             singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { onSearchSubmitted(searchQuery) }),
             shape = RoundedCornerShape(16.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = KineticDarkSurface,
@@ -146,6 +156,38 @@ fun KeepGridView(
                 .focusRequester(searchFocusRequester)
                 .testTag("input_search_notes")
         )
+
+        if (searchQuery.isBlank() && recentSearches.isNotEmpty()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(start = 16.dp, bottom = 2.dp)
+            ) {
+                Text("RECENT", color = KineticTextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            }
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(recentSearches) { recent ->
+                    FilterChip(
+                        selected = false,
+                        onClick = { onSearchChange(recent) },
+                        label = { Text(recent, fontSize = 11.sp, maxLines = 1) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = KineticDarkSurface,
+                            labelColor = KineticTextSecondary
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            borderColor = KineticDarkBorder,
+                            enabled = true,
+                            selected = false
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
+            }
+        }
 
         // Group / Category Filter Chips Carousel
         LazyRow(
@@ -191,6 +233,40 @@ fun KeepGridView(
                     ),
                     shape = RoundedCornerShape(10.dp)
                 )
+            }
+        }
+
+        if (tags.isNotEmpty()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(start = 16.dp, bottom = 2.dp)
+            ) {
+                Text("TAGS", color = KineticTextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            }
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(tags) { tag ->
+                    FilterChip(
+                        selected = selectedTag?.equals(tag, ignoreCase = true) == true,
+                        onClick = { onTagSelect(tag) },
+                        label = { Text("#${tag}", fontSize = 11.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = KineticDarkSurface,
+                            labelColor = KineticTextSecondary,
+                            selectedContainerColor = KineticSecondary.copy(alpha = 0.2f),
+                            selectedLabelColor = Color.White
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            borderColor = if (selectedTag?.equals(tag, ignoreCase = true) == true) KineticSecondary else KineticDarkBorder,
+                            enabled = true,
+selected = selectedTag?.equals(tag, ignoreCase = true) == true
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
             }
         }
 

@@ -66,6 +66,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.ChecklistItemEntity
@@ -81,6 +82,8 @@ import com.example.ui.theme.KineticSecondary
 import com.example.ui.theme.KineticTextMuted
 import com.example.ui.theme.KineticTextPrimary
 import com.example.ui.theme.KineticTextSecondary
+import com.example.ui.viewmodel.AiPreview
+import com.example.ui.viewmodel.AiPreviewKind
 import com.example.ui.viewmodel.EditorSaveStatus
 import com.example.ui.viewmodel.FolderItem
 import kotlinx.coroutines.delay
@@ -91,6 +94,8 @@ fun FullScreenNoteEditorScreen(
     checklistItems: List<ChecklistItemEntity>,
     suggestedLinks: List<LinkSuggestion>,
     aiSummaryOutput: String?,
+    aiPreview: AiPreview? = null,
+    canUndoAiChange: Boolean = false,
     isAiLoading: Boolean,
     availableFolders: List<FolderItem> = emptyList(),
     saveStatus: EditorSaveStatus = EditorSaveStatus.SAVED,
@@ -108,6 +113,9 @@ fun FullScreenNoteEditorScreen(
     onToggleChecklistItem: (ChecklistItemEntity) -> Unit,
     onDeleteChecklistItem: (ChecklistItemEntity) -> Unit,
     onBeautifyNote: () -> Unit,
+    onApplyAiPreview: () -> Unit = {},
+    onCancelAiPreview: () -> Unit = {},
+    onUndoAiChange: () -> Unit = {},
     onRequestAiLinks: () -> Unit,
     onAcceptAiLink: (LinkSuggestion) -> Unit,
     modifier: Modifier = Modifier
@@ -119,6 +127,13 @@ fun FullScreenNoteEditorScreen(
     var title by remember(note.id) { mutableStateOf(note.title) }
     var content by remember(note.id) { mutableStateOf(note.content) }
     var isDirty by remember(note.id) { mutableStateOf(false) }
+
+    LaunchedEffect(note.id, note.title, note.content) {
+        if (!isDirty) {
+            title = note.title
+            content = note.content
+        }
+    }
 
     val currentTitle by rememberUpdatedState(title)
     val currentContent by rememberUpdatedState(content)
@@ -178,6 +193,7 @@ fun FullScreenNoteEditorScreen(
         mutableStateOf(if (note.type == NoteType.CHECKLIST) "checklist" else "doc")
     }
     var showFolderMenu by remember { mutableStateOf(false) }
+    var showColorMenu by remember { mutableStateOf(false) }
 
     val accentColor = try {
         Color(android.graphics.Color.parseColor(note.colorHex))
@@ -244,7 +260,9 @@ fun FullScreenNoteEditorScreen(
                         color = Color(0xFF161B2C),
                         shape = RoundedCornerShape(8.dp),
                         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x28FFFFFF)),
-                        modifier = Modifier.clickable { showFolderMenu = true }
+                        modifier = Modifier
+                            .width(120.dp)
+                            .clickable { showFolderMenu = true }
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -262,7 +280,9 @@ fun FullScreenNoteEditorScreen(
                                 color = KineticTextPrimary,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                fontFamily = FontFamily.Monospace
+                                fontFamily = FontFamily.Monospace,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Icon(
@@ -311,28 +331,45 @@ fun FullScreenNoteEditorScreen(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // Color accent dots
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    accents.forEach { hex ->
-                        val col = Color(android.graphics.Color.parseColor(hex))
-                        val isSel = note.colorHex.equals(hex, ignoreCase = true)
-                        Box(
-                            modifier = Modifier
-                                .size(14.dp)
-                                .clip(CircleShape)
-                                .background(col)
-                                .border(
-                                    width = if (isSel) 2.dp else 0.dp,
-                                    color = if (isSel) Color.White else Color.Transparent,
-                                    shape = CircleShape
+                // Color is a low-frequency setting: keep one calm swatch in the primary bar
+                // and put the full palette behind it instead of consuming six toolbar slots.
+                Box {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(accentColor)
+                            .border(2.dp, Color.White.copy(alpha = 0.8f), CircleShape)
+                            .clickable { showColorMenu = true }
+                    )
+                    DropdownMenu(
+                        expanded = showColorMenu,
+                        onDismissRequest = { showColorMenu = false },
+                        modifier = Modifier.background(Color(0xFF141824))
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                        ) {
+                            accents.forEach { hex ->
+                                val col = Color(android.graphics.Color.parseColor(hex))
+                                Box(
+                                    modifier = Modifier
+                                        .size(22.dp)
+                                        .clip(CircleShape)
+                                        .background(col)
+                                        .border(
+                                            width = if (note.colorHex.equals(hex, ignoreCase = true)) 2.dp else 0.dp,
+                                            color = if (note.colorHex.equals(hex, ignoreCase = true)) Color.White else Color.Transparent,
+                                            shape = CircleShape
+                                        )
+                                        .clickable {
+                                            showColorMenu = false
+                                            updateMetadata(note.copy(colorHex = hex))
+                                        }
                                 )
-                                .clickable {
-                                    updateMetadata(note.copy(colorHex = hex))
-                                }
-                        )
+                            }
+                        }
                     }
                 }
 
@@ -564,7 +601,7 @@ fun FullScreenNoteEditorScreen(
                         cursorBrush = SolidColor(KineticPrimary),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .defaultMinSize(minHeight = 350.dp)
+                            .defaultMinSize(minHeight = 220.dp)
                             .testTag("input_markdown_content"),
                         decorationBox = { innerTextField ->
                             if (content.isEmpty()) {
@@ -615,6 +652,63 @@ fun FullScreenNoteEditorScreen(
                                     ) {
                                         Text("Link", fontSize = 10.sp)
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Destructive-looking AI actions stay in the editor as a compact, explicit
+                // review card. Apply is the only path that writes the proposed content.
+                aiPreview?.let { preview ->
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Surface(
+                        color = Color(0xFF211A31),
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x45A855F7)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFFA855F7), modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(preview.title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Spacer(modifier = Modifier.weight(1f))
+                                Text("PREVIEW", color = Color(0xFFC4B5FD), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(modifier = Modifier.height(5.dp))
+                            Text(preview.description, color = KineticTextSecondary, fontSize = 11.sp, lineHeight = 15.sp)
+                            if (preview.kind == AiPreviewKind.NOTE_CONTENT && preview.proposedContent != null) {
+                                Spacer(modifier = Modifier.height(7.dp))
+                                Text(
+                                    preview.proposedContent.take(240).let { if (preview.proposedContent.length > 240) "$it…" else it },
+                                    color = KineticTextMuted,
+                                    fontSize = 10.sp,
+                                    lineHeight = 14.sp,
+                                    maxLines = 7
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(7.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = onCancelAiPreview,
+                                    colors = ButtonDefaults.buttonColors(containerColor = KineticDarkSurfaceVariant),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.height(32.dp)
+                                ) { Text("Cancel", color = KineticTextSecondary, fontSize = 10.sp) }
+                                Button(
+                                    onClick = onApplyAiPreview,
+                                    colors = ButtonDefaults.buttonColors(containerColor = KineticPrimary),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.height(32.dp)
+                                ) { Text("Apply change", fontSize = 10.sp) }
+                                if (canUndoAiChange) {
+                                    Button(
+                                        onClick = onUndoAiChange,
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.height(32.dp)
+                                    ) { Text("Undo", color = KineticSecondary, fontSize = 10.sp) }
                                 }
                             }
                         }

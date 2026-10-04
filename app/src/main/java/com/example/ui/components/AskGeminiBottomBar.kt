@@ -40,6 +40,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +64,8 @@ import com.example.ui.theme.KineticSecondary
 import com.example.ui.theme.KineticTextMuted
 import com.example.ui.theme.KineticTextPrimary
 import com.example.ui.theme.KineticTextSecondary
+import com.example.ui.viewmodel.AiPreview
+import com.example.ui.viewmodel.AiPreviewKind
 
 @Composable
 fun AskGeminiBottomBar(
@@ -74,6 +77,11 @@ fun AskGeminiBottomBar(
     onSynthesizeSpace: () -> Unit,
     onBeautifyCurrentNote: () -> Unit,
     onSubmitQuery: (String) -> Unit,
+    aiPreview: AiPreview? = null,
+    canUndoAiChange: Boolean = false,
+    onApplyAiPreview: () -> Unit = {},
+    onCancelAiPreview: () -> Unit = {},
+    onUndoAiChange: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var queryText by remember { mutableStateOf("") }
@@ -208,6 +216,56 @@ fun AskGeminiBottomBar(
                                 Text("Tidy Note", color = KineticTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                                 Text("Neat Format", color = KineticTextMuted, fontSize = 9.sp)
                             }
+                        }
+                    }
+
+                    // Every mutating AI action is a reviewable preview. The app does not silently
+                    // rewrite note content or move spatial cards from a shortcut.
+                    aiPreview?.let { preview ->
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Surface(
+                            color = Color(0xFF211A31),
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x45A855F7)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFFA855F7), modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(7.dp))
+                                    Text(preview.title, color = KineticTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    Spacer(modifier = Modifier.weight(1f))
+                                    Text("PREVIEW", color = Color(0xFFC4B5FD), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(modifier = Modifier.height(5.dp))
+                                Text(preview.description, color = KineticTextSecondary, fontSize = 11.sp, lineHeight = 15.sp)
+                                if (preview.kind == AiPreviewKind.NOTE_CONTENT && preview.proposedContent != null) {
+                                    Spacer(modifier = Modifier.height(7.dp))
+                                    Text(
+                                        text = preview.proposedContent.take(180).let { if (preview.proposedContent.length > 180) "$it…" else it },
+                                        color = KineticTextMuted,
+                                        fontSize = 10.sp,
+                                        lineHeight = 14.sp,
+                                        maxLines = 5
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    TextButton(onClick = onCancelAiPreview) {
+                                        Text("Cancel", color = KineticTextSecondary, fontSize = 11.sp)
+                                    }
+                                    TextButton(onClick = onApplyAiPreview) {
+                                        Text("Apply change", color = KineticSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (canUndoAiChange) {
+                        Spacer(modifier = Modifier.height(7.dp))
+                        TextButton(onClick = onUndoAiChange, modifier = Modifier.align(Alignment.End)) {
+                            Text("Undo last assistant change", color = KineticSecondary, fontSize = 11.sp)
                         }
                     }
 

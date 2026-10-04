@@ -66,11 +66,34 @@ data class EditorSaveState(
     val errorMessage: String? = null
 )
 
+enum class AiPreviewKind {
+    BOARD_LAYOUT,
+    NOTE_CONTENT
+}
+
+data class AiPreview(
+    val kind: AiPreviewKind,
+    val title: String,
+    val description: String,
+    val noteId: String? = null,
+    val originalContent: String? = null,
+    val proposedContent: String? = null,
+    val plannedPositions: Map<String, Pair<Float, Float>> = emptyMap()
+)
+
+data class AiUndo(
+    val kind: AiPreviewKind,
+    val noteId: String? = null,
+    val previousContent: String? = null,
+    val previousPositions: Map<String, Pair<Float, Float>> = emptyMap()
+)
+
 data class NotesUiState(
     val viewMode: VaultViewMode = VaultViewMode.CANVAS, // Default: Spatial Board
     /** `null` means "All Notes" (no group filter). */
     val selectedGroupId: String? = null,
     val searchQuery: String = "",
+    val recentSearches: List<String> = emptyList(),
     val selectedTag: String? = null,
     val selectedNote: NoteEntity? = null,
     val isFocusSheetOpen: Boolean = false,
@@ -87,6 +110,8 @@ data class NotesUiState(
     val isAiLoading: Boolean = false,
     val aiSuggestedLinks: List<LinkSuggestion> = emptyList(),
     val aiSummaryOutput: String? = null,
+    val aiPreview: AiPreview? = null,
+    val canUndoAiChange: Boolean = false,
     val activeChecklist: List<ChecklistItemEntity> = emptyList(),
     val userNotice: String? = null,
     val isAskGeminiExpanded: Boolean = false,
@@ -121,6 +146,7 @@ class NotesViewModel(
 
     private val _uiState = MutableStateFlow(NotesUiState())
     val uiState: StateFlow<NotesUiState> = _uiState.asStateFlow()
+    private var lastAiUndo: AiUndo? = null
 
     /** Durable groups, straight from Room. */
     val groups: StateFlow<List<NoteGroupEntity>> = repository.allGroups
@@ -176,6 +202,14 @@ class NotesViewModel(
 
     fun setViewMode(mode: VaultViewMode) {
         _uiState.value = _uiState.value.copy(viewMode = mode)
+    }
+
+    /** Refresh graph physics bounds after Compose measures the browsing viewport. */
+    fun updateGraphBounds(width: Float, height: Float) {
+        graphEngine.updateBounds(width, height)
+        if (allNotes.value.isNotEmpty()) {
+            graphEngine.updateGraph(allNotes.value, allLinks.value)
+        }
     }
 
     fun selectGroup(groupId: String?) {
@@ -266,6 +300,15 @@ class NotesViewModel(
         _uiState.value = _uiState.value.copy(searchQuery = query)
     }
 
+    fun rememberSearch(query: String) {
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) return
+        _uiState.update { state ->
+            state.copy(recentSearches = (listOf(trimmed) + state.recentSearches
+                .filterNot { it.equals(trimmed, ignoreCase = true) }).take(5))
+        }
+    }
+
     fun setSelectedTag(tag: String?) {
         _uiState.value = _uiState.value.copy(
             selectedTag = if (_uiState.value.selectedTag == tag) null else tag
@@ -284,6 +327,7 @@ class NotesViewModel(
             isFocusSheetOpen = true,
             aiSuggestedLinks = emptyList(),
             aiSummaryOutput = null,
+            aiPreview = null,
             editorSave = EditorSaveState(status = EditorSaveStatus.SAVED)
         )
         viewModelScope.launch {
@@ -321,6 +365,7 @@ class NotesViewModel(
                 selectedNote = null,
                 aiSuggestedLinks = emptyList(),
                 aiSummaryOutput = null,
+                aiPreview = null,
                 editorSave = EditorSaveState()
             )
         }
@@ -675,44 +720,120 @@ class NotesViewModel(
     }
 
     // Gemini AI Features
+    /**
+     * AI never changes durable notes from a shortcut. It first creates a reviewable plan;
+     * the user must explicitly Apply it. This matters especially for spatial layouts where a
+     * surprising arrangement can otherwise be difficult to recover from.
+     */
     fun autoSortBoard() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isAiLoading = true)
+            _uiState.update { it.copy(isAiLoading = true) }
             val notes = allNotes.value
-
-            // Neatly arrange cards into 2-column or thematic quadrants
-            val colW = 260f
-            val rowH = 220f
-            val startX = 40f
-            val startY = 70f
-
-            notes.forEachIndexed { index, note ->
+            val plannedPositions = notes.mapIndexed { index, note ->
                 val col = index % 2
                 val row = index / 2
-                val newX = startX + col * colW
-                val newY = startY + row * rowH
-                repository.updateNotePosition(note.id, newX, newY)
-            }
+                note.id to Pair(40f + col * 260f, 70f + row * 220f)
+            }.toMap()
 
-            _uiState.value = _uiState.value.copy(
-                isAiLoading = false,
-                userNotice = "Gemini auto-sorted board cards into structured quadrants! ✨",
-                isAskGeminiExpanded = false
-            )
+            _uiState.update {
+                it.copy(
+                    isAiLoading = false,
+                    aiPreview = AiPreview(
+                        kind = AiPreviewKind.BOARD_LAYOUT,
+                        title = "Suggested board layout",
+                        description = "Preview a two-column arrangement for ${notes.size} card${if (notes.size == 1) "" else "s"}. Nothing has moved yet.",
+                        plannedPositions = plannedPositions
+                    ),
+                    canUndoAiChange = false,
+                    isAskGeminiExpanded = true
+                )
+            }
         }
     }
 
     fun beautifyCurrentNote() {
         val note = _uiState.value.selectedNote ?: return
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isAiLoading = true)
+            _uiState.update { it.copy(isAiLoading = true) }
             val beautified = repository.beautifyNoteContent(note.title, note.content)
-            val updated = note.copy(content = beautified)
-            updateSelectedNote(updated)
-            _uiState.value = _uiState.value.copy(
-                isAiLoading = false,
-                userNotice = "Note reformatted & elevated with neat Markdown! ✨"
-            )
+            _uiState.update {
+                it.copy(
+                    isAiLoading = false,
+                    aiPreview = AiPreview(
+                        kind = AiPreviewKind.NOTE_CONTENT,
+                        title = "Formatting preview",
+                        description = "Review the proposed formatting before it replaces this note.",
+                        noteId = note.id,
+                        originalContent = note.content,
+                        proposedContent = beautified
+                    ),
+                    canUndoAiChange = false,
+                    isAskGeminiExpanded = true
+                )
+            }
+        }
+    }
+
+    fun cancelAiPreview() {
+        _uiState.update { it.copy(aiPreview = null, isAiLoading = false) }
+    }
+
+    fun applyAiPreview() {
+        val preview = _uiState.value.aiPreview ?: return
+        viewModelScope.launch {
+            val previousPositions = allNotes.value.associate { it.id to Pair(it.x, it.y) }
+            when (preview.kind) {
+                AiPreviewKind.BOARD_LAYOUT -> {
+                    preview.plannedPositions.forEach { (id, position) ->
+                        repository.updateNotePosition(id, position.first, position.second)
+                    }
+                    lastAiUndo = AiUndo(
+                        kind = preview.kind,
+                        previousPositions = previousPositions
+                    )
+                    _uiState.update { it.copy(userNotice = "Board layout applied. You can undo it from Assistant.") }
+                }
+                AiPreviewKind.NOTE_CONTENT -> {
+                    val note = allNotes.value.firstOrNull { it.id == preview.noteId }
+                    val proposed = preview.proposedContent ?: return@launch
+                    if (note != null) {
+                        repository.saveNoteText(note.id, note.title, proposed)
+                        _uiState.update { state ->
+                            state.copy(selectedNote = if (state.selectedNote?.id == note.id) note.copy(content = proposed) else state.selectedNote)
+                        }
+                        lastAiUndo = AiUndo(
+                            kind = preview.kind,
+                            noteId = note.id,
+                            previousContent = preview.originalContent
+                        )
+                        _uiState.update { it.copy(userNotice = "Formatting applied. You can undo it from Assistant.") }
+                    }
+                }
+            }
+            _uiState.update { it.copy(aiPreview = null, canUndoAiChange = true, isAiLoading = false) }
+        }
+    }
+
+    fun undoAiChange() {
+        val undo = lastAiUndo ?: return
+        viewModelScope.launch {
+            when (undo.kind) {
+                AiPreviewKind.BOARD_LAYOUT -> undo.previousPositions.forEach { (id, position) ->
+                    repository.updateNotePosition(id, position.first, position.second)
+                }
+                AiPreviewKind.NOTE_CONTENT -> {
+                    val note = allNotes.value.firstOrNull { it.id == undo.noteId }
+                    val content = undo.previousContent
+                    if (note != null && content != null) {
+                        repository.saveNoteText(note.id, note.title, content)
+                        _uiState.update { state ->
+                            state.copy(selectedNote = if (state.selectedNote?.id == note.id) note.copy(content = content) else state.selectedNote)
+                        }
+                    }
+                }
+            }
+            lastAiUndo = null
+            _uiState.update { it.copy(canUndoAiChange = false, userNotice = "Assistant change undone") }
         }
     }
 

@@ -127,6 +127,12 @@ fun KineticCanvasApp(viewModel: NotesViewModel) {
     val graphState by viewModel.graphState.collectAsStateWithLifecycle()
     val customFolders by viewModel.customFolders.collectAsStateWithLifecycle()
     val selectedGroupName by viewModel.selectedGroupName.collectAsStateWithLifecycle()
+    val availableTags = remember(allNotes) {
+        allNotes.map { it.tag.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase() }
+            .sortedBy { it.lowercase() }
+    }
 
     var showCreateDialog by remember { mutableStateOf(false) }
     var folderMenuExpanded by remember { mutableStateOf(false) }
@@ -156,10 +162,18 @@ fun KineticCanvasApp(viewModel: NotesViewModel) {
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            // The toolbar is an overlay, so reserve its full status-bar + action-row height
+            // for every browsing surface. This keeps Grid search and filter chips from hiding
+            // underneath the header on real phones.
+            val viewAreaModifier = Modifier
+                .fillMaxSize()
+                .padding(top = 80.dp)
+
             // Main View Area: Spatial Board is the Default Home!
             when (uiState.viewMode) {
                 VaultViewMode.CANVAS -> {
                     SpatialCanvasView(
+                        modifier = viewAreaModifier,
                         notes = filteredNotes,
                         links = allLinks,
                         zoom = uiState.canvasZoom,
@@ -195,16 +209,22 @@ fun KineticCanvasApp(viewModel: NotesViewModel) {
 
                 VaultViewMode.GRID -> {
                     KeepGridView(
+                        modifier = viewAreaModifier,
                         notes = filteredNotes,
                         searchQuery = uiState.searchQuery,
+                        recentSearches = uiState.recentSearches,
                         selectedFolder = selectedGroupName,
                         folders = customFolders,
+                        tags = availableTags,
+                        selectedTag = uiState.selectedTag,
                         unlockedNoteIds = uiState.unlockedNoteIds,
                         onSearchChange = { viewModel.setSearchQuery(it) },
+                        onSearchSubmitted = { viewModel.rememberSearch(it) },
                         requestSearchFocusToken = searchFocusRequestToken,
                         onFolderSelect = { name ->
                             viewModel.selectGroup(customFolders.firstOrNull { it.name.equals(name, ignoreCase = true) }?.id)
                         },
+                        onTagSelect = { tag -> viewModel.setSelectedTag(tag) },
                         onNoteClick = { note ->
                             viewModel.openNote(note)
                         },
@@ -214,6 +234,7 @@ fun KineticCanvasApp(viewModel: NotesViewModel) {
 
                 VaultViewMode.GRAPH -> {
                     ObsidianGraphView(
+                        modifier = viewAreaModifier,
                         graphState = graphState,
                         notes = allNotes,
                         onNodeDrag = { id, offset ->
@@ -224,7 +245,8 @@ fun KineticCanvasApp(viewModel: NotesViewModel) {
                         },
                         onOpenNote = { note ->
                             viewModel.openNote(note)
-                        }
+                        },
+                        onViewportChanged = viewModel::updateGraphBounds
                     )
                 }
             }
@@ -451,7 +473,12 @@ fun KineticCanvasApp(viewModel: NotesViewModel) {
                         onAutoSort = { viewModel.autoSortBoard() },
                         onSynthesizeSpace = { viewModel.synthesizeActiveSpace() },
                         onBeautifyCurrentNote = { viewModel.beautifyCurrentNote() },
-                        onSubmitQuery = { viewModel.handleAskGeminiQuery(it) }
+                        onSubmitQuery = { viewModel.handleAskGeminiQuery(it) },
+                        aiPreview = uiState.aiPreview,
+                        canUndoAiChange = uiState.canUndoAiChange,
+                        onApplyAiPreview = { viewModel.applyAiPreview() },
+                        onCancelAiPreview = { viewModel.cancelAiPreview() },
+                        onUndoAiChange = { viewModel.undoAiChange() }
                     )
                 }
             }
@@ -464,6 +491,8 @@ fun KineticCanvasApp(viewModel: NotesViewModel) {
                         checklistItems = uiState.activeChecklist,
                         suggestedLinks = uiState.aiSuggestedLinks,
                         aiSummaryOutput = uiState.aiSummaryOutput,
+                        aiPreview = uiState.aiPreview,
+                        canUndoAiChange = uiState.canUndoAiChange,
                         isAiLoading = uiState.isAiLoading,
                         availableFolders = customFolders,
                         saveStatus = uiState.editorSave.status,
@@ -485,6 +514,9 @@ fun KineticCanvasApp(viewModel: NotesViewModel) {
                         onToggleChecklistItem = { item -> viewModel.toggleChecklistItem(item) },
                         onDeleteChecklistItem = { item -> viewModel.deleteChecklistItem(item) },
                         onBeautifyNote = { viewModel.beautifyCurrentNote() },
+                        onApplyAiPreview = { viewModel.applyAiPreview() },
+                        onCancelAiPreview = { viewModel.cancelAiPreview() },
+                        onUndoAiChange = { viewModel.undoAiChange() },
                         onRequestAiLinks = { viewModel.requestAiLinkSuggestions() },
                         onAcceptAiLink = { suggestion -> viewModel.acceptAiLink(suggestion) },
                         modifier = Modifier.fillMaxSize()

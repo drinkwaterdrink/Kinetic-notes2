@@ -30,10 +30,14 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -100,6 +104,8 @@ fun SpatialCanvasView(
     val cardPositions = remember { mutableStateMapOf<String, Offset>() }
     val activeDraggedCardIds = remember { mutableSetOf<String>() }
     var activeDraggedId by remember { mutableStateOf<String?>(null) }
+    var selectedCardId by remember { mutableStateOf<String?>(null) }
+    var pendingDeleteId by remember { mutableStateOf<String?>(null) }
 
     // External position reconciliation rule:
     // Update non-dragged cards from external emissions (database/undo/auto-sort); retain existing IDs
@@ -127,6 +133,12 @@ fun SpatialCanvasView(
     ) {
         val widthPx = constraints.maxWidth.toFloat()
         val heightPx = constraints.maxHeight.toFloat()
+
+        LaunchedEffect(notes) {
+            if (selectedCardId != null && notes.none { it.id == selectedCardId }) {
+                selectedCardId = null
+            }
+        }
 
         // Report the real viewport so "new note at centre" and "Fit Notes" use true geometry.
         LaunchedEffect(widthPx, heightPx) {
@@ -254,8 +266,10 @@ fun SpatialCanvasView(
                     getPosition = { cardPositions[note.id] ?: Offset(note.x, note.y) },
                     zoom = zoom,
                     isSelectedForLinking = isSelectedForLinking,
+                    isSelected = selectedCardId == note.id,
                     isActiveDragged = isCardActive,
                     onCardClick = {
+                        selectedCardId = note.id
                         if (isLinkingMode) {
                             onCardTapInLinkingMode(note.id)
                         } else {
@@ -263,8 +277,10 @@ fun SpatialCanvasView(
                         }
                     },
                     onConnectClick = { onCardTapInLinkingMode(note.id) },
-                    onDeleteClick = { onDeleteNote(note.id) },
+                    onDeleteClick = { pendingDeleteId = note.id },
+                    onCardSelected = { selectedCardId = note.id },
                     onDragStart = {
+                        selectedCardId = note.id
                         activeDraggedCardIds.add(note.id)
                         activeDraggedId = note.id
                     },
@@ -299,6 +315,37 @@ fun SpatialCanvasView(
                     }
                 )
             }
+        }
+
+        pendingDeleteId?.let { deleteId ->
+            val noteToDelete = notes.firstOrNull { it.id == deleteId }
+            AlertDialog(
+                onDismissRequest = { pendingDeleteId = null },
+                title = { Text("Delete this note?", fontWeight = FontWeight.Bold) },
+                text = {
+                    Text(
+                        "${noteToDelete?.title ?: "This note"} will be removed from the canvas and library. This cannot be undone.",
+                        color = KineticTextSecondary
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            pendingDeleteId = null
+                            selectedCardId = null
+                            onDeleteNote(deleteId)
+                        }
+                    ) { Text("Delete", color = Color(0xFFFB7185), fontWeight = FontWeight.Bold) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingDeleteId = null }) {
+                        Text("Cancel", color = KineticTextSecondary)
+                    }
+                },
+                containerColor = Color(0xFF171B28),
+                titleContentColor = Color.White,
+                textContentColor = KineticTextSecondary
+            )
         }
 
         // Empty Canvas State
@@ -450,10 +497,12 @@ fun ReferenceNoteCardItem(
     getPosition: () -> Offset,
     zoom: Float,
     isSelectedForLinking: Boolean,
+    isSelected: Boolean,
     isActiveDragged: Boolean,
     onCardClick: () -> Unit,
     onConnectClick: () -> Unit,
     onDeleteClick: () -> Unit,
+    onCardSelected: () -> Unit,
     onDragStart: () -> Unit,
     onDragDelta: (screenDelta: Offset) -> Unit,
     onDragEnd: () -> Unit,
@@ -470,8 +519,12 @@ fun ReferenceNoteCardItem(
         color = Color(0xFF131722).copy(alpha = 0.95f),
         shape = RoundedCornerShape(16.dp),
         border = androidx.compose.foundation.BorderStroke(
-            width = if (isSelectedForLinking) 2.dp else 1.dp,
-            color = if (isSelectedForLinking) KineticSecondary else Color(0x22FFFFFF)
+            width = if (isSelectedForLinking || isSelected) 2.dp else 1.dp,
+            color = when {
+                isSelectedForLinking -> KineticSecondary
+                isSelected -> KineticPrimary
+                else -> Color(0x22FFFFFF)
+            }
         ),
         shadowElevation = if (isActiveDragged) 16.dp else 8.dp,
         modifier = modifier
@@ -488,7 +541,10 @@ fun ReferenceNoteCardItem(
             // consumes a move - so tap and drag can never fight each other. A tap that wobbles
             // by a few pixels is still a tap.
             .pointerInput(note.id) {
-                detectTapGestures(onTap = { onCardClick() })
+                detectTapGestures(
+                    onTap = { onCardClick() },
+                    onLongPress = { onCardSelected() }
+                )
             }
             // Drag-to-move. Compose delivers dragAmount in this node's LOCAL (world) space
             // because the node lives inside the zoomed graphicsLayer, which is exactly what
@@ -551,30 +607,32 @@ fun ReferenceNoteCardItem(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                // Connect Thread Button
-                IconButton(
-                    onClick = onConnectClick,
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Link,
-                        contentDescription = "Connect",
-                        tint = KineticTextMuted,
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
+                // Low-frequency card actions stay hidden in the calm state. Long-press a card
+                // to select it and reveal the safer, contextual controls.
+                if (isSelectedForLinking || isSelected) {
+                    IconButton(
+                        onClick = onConnectClick,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Link,
+                            contentDescription = "Connect",
+                            tint = KineticSecondary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
 
-                // Delete / Archive Button
-                IconButton(
-                    onClick = onDeleteClick,
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Archive",
-                        tint = KineticTextMuted,
-                        modifier = Modifier.size(14.dp)
-                    )
+                    IconButton(
+                        onClick = onDeleteClick,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Delete note",
+                            tint = Color(0xFFFB7185),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                 }
             }
 

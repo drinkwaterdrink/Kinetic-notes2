@@ -51,6 +51,17 @@ class ForceDirectedGraphEngine(
     val graphState: StateFlow<GraphState> = _graphState.asStateFlow()
 
     private var simulationJob: Job? = null
+    private var boundsWidth = 800f
+    private var boundsHeight = 800f
+
+    /** Keep graph physics centered in the actual phone viewport instead of a desktop-sized
+     * hard-coded 800x800 space. */
+    fun updateBounds(width: Float, height: Float) {
+        if (width > 0f && height > 0f) {
+            boundsWidth = width
+            boundsHeight = height
+        }
+    }
 
     // Physics parameters
     private val kRepulsion = 120000f // Coulomb repulsion constant
@@ -59,7 +70,14 @@ class ForceDirectedGraphEngine(
     private val damping = 0.82f      // Velocity damping factor
     private val maxVelocity = 25f
 
-    fun updateGraph(notes: List<NoteEntity>, links: List<NoteLinkEntity>, boundsWidth: Float = 800f, boundsHeight: Float = 800f) {
+    fun updateGraph(
+        notes: List<NoteEntity>,
+        links: List<NoteLinkEntity>,
+        viewportWidth: Float? = null,
+        viewportHeight: Float? = null
+    ) {
+        viewportWidth?.let { boundsWidth = it.coerceAtLeast(1f) }
+        viewportHeight?.let { boundsHeight = it.coerceAtLeast(1f) }
         val currentNodes = _graphState.value.nodes.toMutableMap()
         val degreeMap = mutableMapOf<String, Int>()
 
@@ -192,9 +210,9 @@ class ForceDirectedGraphEngine(
                     fy[i2] -= fY
                 }
 
-                // 3. Central gravity pull towards (400, 400)
-                val centerX = 400f
-                val centerY = 400f
+                // 3. Central gravity pull towards the measured viewport center.
+                val centerX = boundsWidth / 2f
+                val centerY = boundsHeight / 2f
                 for (i in nodes.indices) {
                     val node = nodes[i]
                     val dx = centerX - node.x
