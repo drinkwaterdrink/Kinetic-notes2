@@ -3,6 +3,7 @@ package com.example.data.repository
 import com.example.data.local.ChecklistItemEntity
 import com.example.data.local.NoteDao
 import com.example.data.local.NoteEntity
+import com.example.data.local.NoteGroupEntity
 import com.example.data.local.NoteLinkEntity
 import com.example.data.local.NoteType
 import com.example.data.remote.GeminiService
@@ -22,6 +23,7 @@ class NoteRepository(
 ) {
     val allNotes: Flow<List<NoteEntity>> = noteDao.getAllNotes()
     val allLinks: Flow<List<NoteLinkEntity>> = noteDao.getAllLinks()
+    val allGroups: Flow<List<NoteGroupEntity>> = noteDao.getAllGroups()
 
     fun getNoteById(id: String): Flow<NoteEntity?> = noteDao.getNoteById(id)
 
@@ -37,6 +39,8 @@ class NoteRepository(
         type: NoteType = NoteType.DOC,
         colorHex: String = "#F59E0B",
         tag: String = "general",
+        groupId: String? = null,
+        folder: String = "All Notes",
         x: Float = 100f,
         y: Float = 100f
     ): String {
@@ -48,6 +52,8 @@ class NoteRepository(
             type = type,
             colorHex = colorHex,
             tag = tag,
+            groupId = groupId,
+            folder = folder,
             x = x,
             y = y,
             updatedAt = System.currentTimeMillis()
@@ -87,13 +93,58 @@ class NoteRepository(
         noteDao.deleteNoteById(id)
     }
 
-    suspend fun updateNotesFolder(oldFolder: String, newFolder: String) {
-        noteDao.updateNotesFolder(oldFolder, newFolder)
+    // ----- Groups -----
+
+    suspend fun getAllGroupsDirect(): List<NoteGroupEntity> = noteDao.getAllGroupsDirect()
+
+    suspend fun getGroupById(id: String): NoteGroupEntity? = noteDao.getGroupById(id)
+
+    suspend fun getGroupByName(name: String): NoteGroupEntity? = noteDao.getGroupByName(name)
+
+    /** Creates a group, or returns the existing one when the name is already taken. */
+    suspend fun createGroup(name: String, colorHex: String, icon: String = "📁"): NoteGroupEntity {
+        val trimmed = name.trim()
+        noteDao.getGroupByName(trimmed)?.let { return it }
+        val existingCount = noteDao.getAllGroupsDirect().size
+        val group = NoteGroupEntity(
+            id = UUID.randomUUID().toString(),
+            name = trimmed,
+            colorHex = colorHex,
+            icon = icon,
+            orderIndex = existingCount
+        )
+        noteDao.upsertGroup(group)
+        return group
     }
 
-    suspend fun deleteNotesByFolder(folder: String) {
-        noteDao.deleteNotesByFolder(folder)
+    suspend fun updateGroup(id: String, name: String, colorHex: String, icon: String): Int {
+        val trimmed = name.trim()
+        val rows = noteDao.updateGroupMeta(id, trimmed, colorHex, icon)
+        // Keep the legacy readable folder column in step with the rename.
+        noteDao.syncLegacyFolderName(id, trimmed)
+        return rows
     }
+
+    /** Normal delete: the group disappears, its notes survive and become ungrouped. */
+    suspend fun deleteGroupKeepNotes(id: String) {
+        noteDao.detachNotesFromGroup(id)
+        noteDao.deleteGroupById(id)
+    }
+
+    /** Destructive delete: the group AND every note inside it are removed. */
+    suspend fun deleteGroupAndNotes(id: String) {
+        noteDao.deleteNotesInGroup(id)
+        noteDao.deleteGroupById(id)
+    }
+
+    suspend fun countNotesInGroup(id: String): Int = noteDao.countNotesInGroup(id)
+
+    suspend fun moveNoteToGroup(noteId: String, groupId: String?): Int {
+        val folderName = groupId?.let { noteDao.getGroupById(it)?.name } ?: "All Notes"
+        return noteDao.updateNoteGroup(noteId, groupId, folderName, System.currentTimeMillis())
+    }
+
+    suspend fun insertGroups(groups: List<NoteGroupEntity>) = noteDao.upsertGroups(groups)
 
     suspend fun updateNotePosition(id: String, x: Float, y: Float) {
         noteDao.updateNotePosition(id, x, y)

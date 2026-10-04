@@ -1,6 +1,7 @@
 package com.example.data.local
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import java.util.UUID
 
@@ -12,7 +13,7 @@ enum class NoteType {
     AUDIO
 }
 
-@Entity(tableName = "notes")
+@Entity(tableName = "notes", indices = [Index("groupId")])
 data class NoteEntity(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
     val title: String,
@@ -20,6 +21,15 @@ data class NoteEntity(
     val type: NoteType = NoteType.DOC,
     val colorHex: String = "#6366F1",
     val tag: String = "Architecture",
+    /**
+     * Stable reference to a [NoteGroupEntity]. `null` means "ungrouped" (All Notes).
+     * This is the source of truth for grouping.
+     */
+    val groupId: String? = null,
+    /**
+     * Legacy human-readable group name. Kept in sync with the group for export/search
+     * readability, but never used to decide which group a note belongs to.
+     */
     val folder: String = "All Notes",
     val x: Float = 0f,
     val y: Float = 0f,

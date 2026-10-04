@@ -71,11 +71,49 @@ interface NoteDao {
     @Query("UPDATE notes SET x = :x, y = :y, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateNotePosition(id: String, x: Float, y: Float, updatedAt: Long = System.currentTimeMillis())
 
-    @Query("UPDATE notes SET folder = :newFolder WHERE folder = :oldFolder")
-    suspend fun updateNotesFolder(oldFolder: String, newFolder: String)
+    // ----- Groups (durable, stable-id based) -----
 
-    @Query("DELETE FROM notes WHERE folder = :folder")
-    suspend fun deleteNotesByFolder(folder: String)
+    @Query("SELECT * FROM note_groups ORDER BY orderIndex ASC, name ASC")
+    fun getAllGroups(): Flow<List<NoteGroupEntity>>
+
+    @Query("SELECT * FROM note_groups ORDER BY orderIndex ASC, name ASC")
+    suspend fun getAllGroupsDirect(): List<NoteGroupEntity>
+
+    @Query("SELECT * FROM note_groups WHERE id = :id")
+    suspend fun getGroupById(id: String): NoteGroupEntity?
+
+    @Query("SELECT * FROM note_groups WHERE name = :name COLLATE NOCASE LIMIT 1")
+    suspend fun getGroupByName(name: String): NoteGroupEntity?
+
+    @Upsert
+    suspend fun upsertGroup(group: NoteGroupEntity)
+
+    @Upsert
+    suspend fun upsertGroups(groups: List<NoteGroupEntity>)
+
+    @Query("UPDATE note_groups SET name = :name, colorHex = :colorHex, icon = :icon WHERE id = :id")
+    suspend fun updateGroupMeta(id: String, name: String, colorHex: String, icon: String): Int
+
+    @Query("DELETE FROM note_groups WHERE id = :id")
+    suspend fun deleteGroupById(id: String)
+
+    @Query("SELECT COUNT(*) FROM notes WHERE groupId = :groupId")
+    suspend fun countNotesInGroup(groupId: String): Int
+
+    /** Normal "Delete group": the notes are KEPT and become ungrouped (All Notes). */
+    @Query("UPDATE notes SET groupId = NULL, folder = 'All Notes' WHERE groupId = :groupId")
+    suspend fun detachNotesFromGroup(groupId: String)
+
+    /** Destructive "Delete group + notes". */
+    @Query("DELETE FROM notes WHERE groupId = :groupId")
+    suspend fun deleteNotesInGroup(groupId: String)
+
+    @Query("UPDATE notes SET groupId = :groupId, folder = :folderName, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateNoteGroup(id: String, groupId: String?, folderName: String, updatedAt: Long): Int
+
+    /** Keeps the legacy readable folder column in step with a renamed group. */
+    @Query("UPDATE notes SET folder = :folderName WHERE groupId = :groupId")
+    suspend fun syncLegacyFolderName(groupId: String, folderName: String)
 
     @Query("UPDATE notes SET isPinned = :isPinned WHERE id = :id")
     suspend fun updatePinStatus(id: String, isPinned: Boolean)

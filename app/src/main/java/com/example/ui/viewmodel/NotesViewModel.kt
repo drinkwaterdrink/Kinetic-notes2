@@ -6,9 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.local.ChecklistItemEntity
 import com.example.data.local.NoteDatabase
 import com.example.data.local.NoteEntity
+import com.example.data.local.NoteGroupEntity
 import com.example.data.local.NoteLinkEntity
 import com.example.data.local.NoteType
-import com.example.data.local.SampleData
 import com.example.data.repository.LinkSuggestion
 import com.example.data.repository.NoteRepository
 import com.example.domain.physics.ForceDirectedGraphEngine
@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -28,12 +29,21 @@ enum class VaultViewMode {
     GRAPH   // Obsidian Knowledge Graph
 }
 
+/**
+ * UI projection of a [NoteGroupEntity]. [id] is `null` for the synthetic "All Notes" entry,
+ * which is a filter rather than a stored group.
+ */
 data class FolderItem(
+    val id: String?,
     val name: String,
     val colorHex: String,
     val icon: String = "📁",
-    val isCustom: Boolean = false
-)
+    val isCustom: Boolean = true
+) {
+    companion object {
+        val AllNotes = FolderItem(id = null, name = "All Notes", colorHex = "#818CF8", icon = "📂", isCustom = false)
+    }
+}
 
 /**
  * Durability state of the note currently open in the editor.
@@ -58,7 +68,8 @@ data class EditorSaveState(
 
 data class NotesUiState(
     val viewMode: VaultViewMode = VaultViewMode.CANVAS, // Default: Spatial Board
-    val selectedFolder: String = "All Notes",
+    /** `null` means "All Notes" (no group filter). */
+    val selectedGroupId: String? = null,
     val searchQuery: String = "",
     val selectedTag: String? = null,
     val selectedNote: NoteEntity? = null,
@@ -69,6 +80,9 @@ data class NotesUiState(
     val canvasZoom: Float = 0.85f, // Clean default zoom
     val canvasPanX: Float = 20f,
     val canvasPanY: Float = 40f,
+    /** Measured size of the board viewport in screen px (0 until the canvas reports it). */
+    val viewportWidthPx: Float = 0f,
+    val viewportHeightPx: Float = 0f,
     val unlockedNoteIds: Set<String> = emptySet(),
     val isAiLoading: Boolean = false,
     val aiSuggestedLinks: List<LinkSuggestion> = emptyList(),
@@ -83,6 +97,14 @@ class NotesViewModel(
     application: Application,
     injectedRepository: NoteRepository?
 ) : AndroidViewModel(application) {
+
+    companion object {
+        const val DEFAULT_PAN_X = 20f
+        const val DEFAULT_PAN_Y = 40f
+        const val DEFAULT_ZOOM = 0.85f
+        const val FIT_NOTES_PADDING_PX = 96f
+    }
+
     constructor(application: Application) : this(application, null)
 
     private val database = NoteDatabase.getDatabase(application, viewModelScope)
@@ -100,49 +122,45 @@ class NotesViewModel(
     private val _uiState = MutableStateFlow(NotesUiState())
     val uiState: StateFlow<NotesUiState> = _uiState.asStateFlow()
 
-    private val _customFolders = MutableStateFlow<List<FolderItem>>(
-        listOf(
-            FolderItem("All Notes", "#818CF8", "📂", isCustom = false),
-            FolderItem("Architecture", "#6366F1", "🏛️", isCustom = false),
-            FolderItem("Product", "#10B981", "🚀", isCustom = false),
-            FolderItem("Code", "#38BDF8", "💻", isCustom = false),
-            FolderItem("Research", "#F59E0B", "🔬", isCustom = false),
-            FolderItem("Priority", "#EC4899", "⚡", isCustom = false)
-        )
-    )
-    val customFolders: StateFlow<List<FolderItem>> = _customFolders.asStateFlow()
+    /** Durable groups, straight from Room. */
+    val groups: StateFlow<List<NoteGroupEntity>> = repository.allGroups
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Filtered notes based on active folder/space, tag, and search
+    /** "All Notes" + every durable group, as consumed by the toolbar / grid / editor. */
+    val customFolders: StateFlow<List<FolderItem>> = groups
+        .map { list ->
+            listOf(FolderItem.AllNotes) + list.map {
+                FolderItem(id = it.id, name = it.name, colorHex = it.colorHex, icon = it.icon, isCustom = true)
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), listOf(FolderItem.AllNotes))
+
+    /** Display name of the active group filter. */
+    val selectedGroupName: StateFlow<String> = combine(groups, _uiState) { list, state ->
+        list.firstOrNull { it.id == state.selectedGroupId }?.name ?: "All Notes"
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "All Notes")
+
+    // Filtered notes based on active group, tag, and search
     val filteredNotes: StateFlow<List<NoteEntity>> = combine(
         allNotes,
         _uiState
     ) { notes, state ->
         notes.filter { note ->
-            val matchesFolder = state.selectedFolder == "All Notes" ||
-                    note.folder.equals(state.selectedFolder, ignoreCase = true) ||
-                    note.tag.equals(state.selectedFolder, ignoreCase = true)
+            val matchesGroup = state.selectedGroupId == null || note.groupId == state.selectedGroupId
             val matchesTag = state.selectedTag == null ||
                     note.tag.equals(state.selectedTag, ignoreCase = true)
             val matchesSearch = state.searchQuery.isBlank() ||
                     note.title.contains(state.searchQuery, ignoreCase = true) ||
                     note.content.contains(state.searchQuery, ignoreCase = true) ||
                     note.tag.contains(state.searchQuery, ignoreCase = true)
-            matchesFolder && matchesTag && matchesSearch
+            matchesGroup && matchesTag && matchesSearch
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
-        viewModelScope.launch {
-            try {
-                if (repository.getAllNotesDirect().isEmpty()) {
-                    repository.insertNotes(SampleData.getInitialNotes())
-                    repository.insertLinks(SampleData.getInitialLinks())
-                    repository.insertChecklistItems(SampleData.getInitialChecklist())
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
+        // NOTE: demo content is seeded exactly once, by NoteDatabase.onCreate, for a brand new
+        // database file. The ViewModel deliberately does NOT re-seed an empty table - deleting
+        // every note used to resurrect the sample notes on the next launch.
         viewModelScope.launch {
             combine(allNotes, allLinks) { notes, links ->
                 Pair(notes, links)
@@ -158,74 +176,86 @@ class NotesViewModel(
         _uiState.value = _uiState.value.copy(viewMode = mode)
     }
 
-    fun setSelectedFolder(folder: String) {
-        _uiState.value = _uiState.value.copy(selectedFolder = folder, selectedTag = null)
+    fun selectGroup(groupId: String?) {
+        _uiState.update { it.copy(selectedGroupId = groupId, selectedTag = null) }
     }
 
-    fun createCustomFolder(name: String, colorHex: String, icon: String = "📁") {
+    fun createGroup(name: String, colorHex: String, icon: String = "📁") {
         val trimmed = name.trim()
-        if (trimmed.isNotBlank() && _customFolders.value.none { it.name.equals(trimmed, ignoreCase = true) }) {
-            val updated = _customFolders.value + FolderItem(name = trimmed, colorHex = colorHex, icon = icon, isCustom = true)
-            _customFolders.value = updated
-            setSelectedFolder(trimmed)
-            _uiState.value = _uiState.value.copy(userNotice = "Group '$trimmed' created! ✨")
-        }
-    }
-
-    fun renameGroup(oldName: String, newName: String) {
-        val trimmed = newName.trim()
-        if (trimmed.isBlank() || oldName == "All Notes" || oldName == trimmed) return
-        val current = _customFolders.value.map {
-            if (it.name.equals(oldName, ignoreCase = true)) it.copy(name = trimmed) else it
-        }
-        _customFolders.value = current
+        if (trimmed.isBlank()) return
         viewModelScope.launch {
-            allNotes.value.filter { it.folder.equals(oldName, ignoreCase = true) }.forEach { note ->
-                repository.saveNote(note.copy(folder = trimmed, tag = trimmed))
+            val existing = repository.getGroupByName(trimmed)
+            if (existing != null) {
+                _uiState.update {
+                    it.copy(selectedGroupId = existing.id, userNotice = "Group '$trimmed' already exists")
+                }
+                return@launch
             }
-            if (_uiState.value.selectedFolder.equals(oldName, ignoreCase = true)) {
-                _uiState.value = _uiState.value.copy(selectedFolder = trimmed)
+            val created = repository.createGroup(trimmed, colorHex, icon)
+            _uiState.update {
+                it.copy(selectedGroupId = created.id, userNotice = "Group '$trimmed' created")
             }
-            _uiState.value = _uiState.value.copy(userNotice = "Group renamed to '$trimmed'")
         }
     }
 
-    fun dissolveGroup(groupName: String) {
-        if (groupName == "All Notes") return
-        _customFolders.value = _customFolders.value.filter { it.name != groupName }
+    /** Rename and/or recolour a group. The group keeps its stable id. */
+    fun updateGroup(groupId: String, name: String, colorHex: String, icon: String = "📁") {
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) return
         viewModelScope.launch {
-            // Notes are KEPT. Only the group container is dissolved.
-            repository.updateNotesFolder(oldFolder = groupName, newFolder = "All Notes")
-            if (_uiState.value.selectedFolder.equals(groupName, ignoreCase = true)) {
-                _uiState.value = _uiState.value.copy(selectedFolder = "All Notes")
+            val clash = repository.getGroupByName(trimmed)
+            if (clash != null && clash.id != groupId) {
+                _uiState.update { it.copy(userNotice = "Another group is already called '$trimmed'") }
+                return@launch
             }
-            _uiState.value = _uiState.value.copy(userNotice = "Dissolved '$groupName'. The notes inside were kept.")
+            repository.updateGroup(groupId, trimmed, colorHex, icon)
+            _uiState.update { it.copy(userNotice = "Group updated") }
         }
     }
 
-    fun deleteGroupAndNotes(groupName: String) {
-        if (groupName == "All Notes") return
-        _customFolders.value = _customFolders.value.filter { it.name != groupName }
+    /**
+     * Normal "Delete group": the group container is removed and every note it held is KEPT,
+     * becoming ungrouped (All Notes).
+     */
+    fun deleteGroupKeepNotes(groupId: String) {
         viewModelScope.launch {
-            repository.deleteNotesByFolder(groupName)
-            if (_uiState.value.selectedFolder.equals(groupName, ignoreCase = true)) {
-                _uiState.value = _uiState.value.copy(selectedFolder = "All Notes")
+            val name = repository.getGroupById(groupId)?.name ?: "Group"
+            val kept = repository.countNotesInGroup(groupId)
+            repository.deleteGroupKeepNotes(groupId)
+            _uiState.update {
+                it.copy(
+                    selectedGroupId = if (it.selectedGroupId == groupId) null else it.selectedGroupId,
+                    userNotice = "Deleted '$name'. $kept note${if (kept == 1) "" else "s"} kept in All Notes."
+                )
             }
-            _uiState.value = _uiState.value.copy(userNotice = "Deleted group '$groupName' and its notes.")
         }
     }
 
-    fun deleteCustomFolder(folderName: String) {
-        dissolveGroup(folderName)
+    /** Destructive variant: removes the group AND the notes inside it. */
+    fun deleteGroupAndNotes(groupId: String) {
+        viewModelScope.launch {
+            val name = repository.getGroupById(groupId)?.name ?: "Group"
+            val removed = repository.countNotesInGroup(groupId)
+            repository.deleteGroupAndNotes(groupId)
+            _uiState.update {
+                it.copy(
+                    selectedGroupId = if (it.selectedGroupId == groupId) null else it.selectedGroupId,
+                    userNotice = "Deleted '$name' and $removed note${if (removed == 1) "" else "s"}."
+                )
+            }
+        }
     }
 
-    fun updateNoteFolder(noteId: String, folderName: String) {
+    fun moveNoteToGroup(noteId: String, groupId: String?) {
         viewModelScope.launch {
-            val note = allNotes.value.find { it.id == noteId } ?: return@launch
-            val updated = note.copy(folder = folderName, tag = folderName)
-            repository.saveNote(updated)
-            if (_uiState.value.selectedNote?.id == noteId) {
-                _uiState.value = _uiState.value.copy(selectedNote = updated)
+            repository.moveNoteToGroup(noteId, groupId)
+            val refreshed = repository.getNoteDirect(noteId)
+            _uiState.update { state ->
+                if (state.selectedNote?.id == noteId && refreshed != null) {
+                    state.copy(selectedNote = refreshed)
+                } else {
+                    state
+                }
             }
         }
     }
@@ -305,33 +335,46 @@ class NotesViewModel(
                 NoteType.AUDIO -> Triple("#EC4899", "Voice Memo", "Priority")
             }
 
-            val zoom = _uiState.value.canvasZoom.coerceAtLeast(0.4f)
-            val panX = _uiState.value.canvasPanX
-            val panY = _uiState.value.canvasPanY
-            // Center of viewport in world units + deterministic offset for multiple notes
-            val approxScreenCenterX = 450f
-            val approxScreenCenterY = 650f
-            val offsetStep = (count % 5) * 24f
-            val worldCenterX = (approxScreenCenterX - panX) / zoom + offsetStep
-            val worldCenterY = (approxScreenCenterY - panY) / zoom + offsetStep
+            val state = _uiState.value
+            // Real measured viewport when the board has reported one, otherwise a sane fallback.
+            val viewportWidth = if (state.viewportWidthPx > 0f) state.viewportWidthPx else 1080f
+            val viewportHeight = if (state.viewportHeightPx > 0f) state.viewportHeightPx else 2000f
+            val cascade = (count % 5) * 18f
+            val spawn = com.example.ui.canvas.spawnPositionForNewCard(
+                viewport = com.example.ui.canvas.ViewportTransform(
+                    panX = state.canvasPanX,
+                    panY = state.canvasPanY,
+                    zoom = state.canvasZoom
+                ),
+                viewportWidthPx = viewportWidth,
+                viewportHeightPx = viewportHeight,
+                cascadeOffsetWorld = cascade
+            )
 
-            val folder = if (_uiState.value.selectedFolder != "All Notes") _uiState.value.selectedFolder else defaultTag
+            val groupId = state.selectedGroupId
+            val groupName = groupId?.let { repository.getGroupById(it)?.name }
 
             val id = repository.createNote(
                 title = defaultTitle,
                 content = if (type == NoteType.CHECKLIST) "Milestone tasks" else "",
                 type = type,
                 colorHex = colorHex,
-                tag = folder,
-                x = worldCenterX,
-                y = worldCenterY
+                tag = groupName ?: defaultTag,
+                groupId = groupId,
+                folder = groupName ?: "All Notes",
+                x = spawn.x,
+                y = spawn.y
             )
-            repository.getNoteDirect(id)?.let { note ->
-                val noteWithFolder = note.copy(folder = folder)
-                repository.saveNote(noteWithFolder)
-                openNote(noteWithFolder)
-            }
+            repository.getNoteDirect(id)?.let { note -> openNote(note) }
         }
+    }
+
+    /** Reported by the board so new notes and Fit Notes can use the real viewport. */
+    fun onViewportMeasured(widthPx: Float, heightPx: Float) {
+        if (widthPx <= 0f || heightPx <= 0f) return
+        val state = _uiState.value
+        if (state.viewportWidthPx == widthPx && state.viewportHeightPx == heightPx) return
+        _uiState.update { it.copy(viewportWidthPx = widthPx, viewportHeightPx = heightPx) }
     }
 
     fun createNewNote(type: NoteType = NoteType.DOC) {
@@ -493,13 +536,57 @@ class NotesViewModel(
         _uiState.value = _uiState.value.copy(canvasZoom = newZoom)
     }
 
-    fun resetCanvasView() {
-        _uiState.value = _uiState.value.copy(
-            canvasPanX = 20f,
-            canvasPanY = 40f,
-            canvasZoom = 0.85f
+    /**
+     * "Fit Notes": frames the notes that are actually on the board right now (respecting the
+     * active group/search filter) instead of jumping to a hard-coded pan/zoom.
+     * Falls back to the default view when there is nothing to frame.
+     */
+    fun fitNotesToViewport() {
+        val state = _uiState.value
+        val notes = filteredNotes.value
+        val width = state.viewportWidthPx
+        val height = state.viewportHeightPx
+        val bounds = com.example.ui.canvas.noteWorldBounds(notes)
+
+        if (bounds == null || width <= 0f || height <= 0f) {
+            _uiState.update {
+                it.copy(
+                    canvasPanX = DEFAULT_PAN_X,
+                    canvasPanY = DEFAULT_PAN_Y,
+                    canvasZoom = DEFAULT_ZOOM,
+                    userNotice = if (notes.isEmpty()) "No notes to fit" else null
+                )
+            }
+            return
+        }
+
+        val fitted = com.example.ui.canvas.fitViewportToBounds(
+            bounds = bounds,
+            viewportWidthPx = width,
+            viewportHeightPx = height,
+            paddingPx = FIT_NOTES_PADDING_PX
+        )
+        _uiState.update {
+            it.copy(canvasPanX = fitted.panX, canvasPanY = fitted.panY, canvasZoom = fitted.zoom)
+        }
+    }
+
+    /** True when the user has panned/zoomed away from every visible note. */
+    fun areNotesOffScreen(): Boolean {
+        val state = _uiState.value
+        return !com.example.ui.canvas.isAnyNoteVisible(
+            notes = filteredNotes.value,
+            viewport = com.example.ui.canvas.ViewportTransform(
+                panX = state.canvasPanX,
+                panY = state.canvasPanY,
+                zoom = state.canvasZoom
+            ),
+            viewportWidthPx = state.viewportWidthPx,
+            viewportHeightPx = state.viewportHeightPx
         )
     }
+
+    fun resetCanvasView() = fitNotesToViewport()
 
     fun toggleSnapToGrid() {
         _uiState.value = _uiState.value.copy(isSnapToGrid = !_uiState.value.isSnapToGrid)
@@ -628,7 +715,7 @@ class NotesViewModel(
     fun synthesizeActiveSpace() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isAiLoading = true)
-            val summary = repository.synthesizeActiveSpace(_uiState.value.selectedFolder, filteredNotes.value)
+            val summary = repository.synthesizeActiveSpace(selectedGroupName.value, filteredNotes.value)
             _uiState.value = _uiState.value.copy(
                 isAiLoading = false,
                 aiSummaryOutput = summary,

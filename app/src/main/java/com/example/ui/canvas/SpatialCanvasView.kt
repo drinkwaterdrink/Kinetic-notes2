@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
@@ -47,8 +48,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.PointMode
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
@@ -83,7 +86,8 @@ fun SpatialCanvasView(
     onTransformChange: (centroid: Offset, panDelta: Offset, zoomChange: Float) -> Unit,
     onZoomIn: () -> Unit,
     onZoomOut: () -> Unit,
-    onResetZoom: () -> Unit,
+    onFitNotes: () -> Unit,
+    onViewportMeasured: (widthPx: Float, heightPx: Float) -> Unit = { _, _ -> },
     onCardMove: (noteId: String, newX: Float, newY: Float) -> Unit,
     onNoteClick: (NoteEntity) -> Unit,
     onCardTapInLinkingMode: (String) -> Unit,
@@ -122,40 +126,45 @@ fun SpatialCanvasView(
     ) {
         val widthPx = constraints.maxWidth.toFloat()
         val heightPx = constraints.maxHeight.toFloat()
-        val gridSize = SpatialGridConfig.DEFAULT_GRID_SPACING
 
-        // 1. Architectural Dot-Matrix Canvas Grid Background
-        Canvas(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    translationX = panX
-                    translationY = panY
-                    scaleX = zoom
-                    scaleY = zoom
+        // Report the real viewport so "new note at centre" and "Fit Notes" use true geometry.
+        LaunchedEffect(widthPx, heightPx) {
+            onViewportMeasured(widthPx, heightPx)
+        }
+
+        // 1. Dot-matrix background.
+        //
+        // Drawn in SCREEN space from the world->screen viewport transform. It used to be a
+        // screen-sized Canvas inside a scaled graphicsLayer whose world bounds were re-derived
+        // by hand, which exposed transformed layer edges, snapped by a whole cell when
+        // coordinates crossed the origin (toInt() truncates toward zero) and scaled the dot
+        // radius with the zoom. None of that can happen here: dot radius is constant in px and
+        // the spacing is level-of-detail limited so the dot count stays bounded at any zoom.
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            var spacing = SpatialGridConfig.DEFAULT_GRID_SPACING * zoom
+            while (spacing > 0f && spacing < SpatialGridConfig.MIN_GRID_SPACING_PX) spacing *= 2f
+            if (spacing <= 0f) return@Canvas
+
+            val firstX = panX.mod(spacing) - spacing
+            val firstY = panY.mod(spacing) - spacing
+
+            val points = ArrayList<Offset>()
+            var x = firstX
+            while (x <= size.width + spacing) {
+                var y = firstY
+                while (y <= size.height + spacing) {
+                    points.add(Offset(x, y))
+                    y += spacing
                 }
-        ) {
-            val startX = -panX / zoom - 200f
-            val endX = (-panX + widthPx) / zoom + 200f
-            val startY = -panY / zoom - 200f
-            val endY = (-panY + heightPx) / zoom + 200f
-
-            val firstGridX = (startX / gridSize).toInt() * gridSize
-            val firstGridY = (startY / gridSize).toInt() * gridSize
-
-            var currX = firstGridX
-            while (currX <= endX) {
-                var currY = firstGridY
-                while (currY <= endY) {
-                    drawCircle(
-                        color = Color(0x28FFFFFF),
-                        radius = 1.3f,
-                        center = Offset(currX, currY)
-                    )
-                    currY += gridSize
-                }
-                currX += gridSize
+                x += spacing
             }
+            drawPoints(
+                points = points,
+                pointMode = PointMode.Points,
+                color = Color(0x28FFFFFF),
+                strokeWidth = 2.4f,
+                cap = StrokeCap.Round
+            )
         }
 
         // 2. Dashed Bézier Link Threads between connected notes (evaluated in Draw phase)
@@ -163,6 +172,11 @@ fun SpatialCanvasView(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
+                    // Scale about the world origin so the rendered transform is exactly the
+                    // contract in ViewportTransform (screen = world * zoom + pan). The default
+                    // centre pivot silently shifts everything by center * (1 - zoom), which is
+                    // what made the background drift//glitch against the cards while zooming.
+                    transformOrigin = TransformOrigin(0f, 0f)
                     translationX = panX
                     translationY = panY
                     scaleX = zoom
@@ -219,6 +233,11 @@ fun SpatialCanvasView(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
+                    // Scale about the world origin so the rendered transform is exactly the
+                    // contract in ViewportTransform (screen = world * zoom + pan). The default
+                    // centre pivot silently shifts everything by center * (1 - zoom), which is
+                    // what made the background drift//glitch against the cards while zooming.
+                    transformOrigin = TransformOrigin(0f, 0f)
                     translationX = panX
                     translationY = panY
                     scaleX = zoom
@@ -321,7 +340,51 @@ fun SpatialCanvasView(
             }
         }
 
-        // 4. Floating Zoom HUD Pill on Bottom-Left - elevated to prevent overlap
+        // 4. Board recovery: if the user has panned away from everything, offer a way back.
+        val notesVisible = remember(notes, zoom, panX, panY, widthPx, heightPx) {
+            isAnyNoteVisible(
+                notes = notes,
+                viewport = ViewportTransform(panX = panX, panY = panY, zoom = zoom),
+                viewportWidthPx = widthPx,
+                viewportHeightPx = heightPx
+            )
+        }
+
+        if (!notesVisible && notes.isNotEmpty()) {
+            Surface(
+                color = Color(0xFF151A28),
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x3038BDF8)),
+                shadowElevation = 10.dp,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 12.dp)
+                    .clickable { onFitNotes() }
+                    .testTag("btn_find_notes")
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CenterFocusStrong,
+                        contentDescription = null,
+                        tint = KineticSecondary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Find notes",
+                        color = KineticSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+
+        // 5. Compact zoom HUD, bottom-left. Sits inside the board's safe area; the shell keeps
+        // it clear of the New Note / AI controls and the system navigation bar.
         Surface(
             color = Color(0xFF131722).copy(alpha = 0.94f),
             shape = RoundedCornerShape(14.dp),
@@ -329,63 +392,50 @@ fun SpatialCanvasView(
             shadowElevation = 10.dp,
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(start = 16.dp, bottom = 28.dp)
                 .testTag("zoom_hud_capsule")
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
             ) {
-                IconButton(
-                    onClick = onZoomOut,
-                    modifier = Modifier.size(28.dp)
-                ) {
+                IconButton(onClick = onZoomOut, modifier = Modifier.size(32.dp)) {
                     Icon(
                         imageVector = Icons.Default.Remove,
-                        contentDescription = "Zoom Out",
+                        contentDescription = "Zoom out",
                         tint = KineticTextSecondary,
                         modifier = Modifier.size(16.dp)
                     )
                 }
-
                 Text(
                     text = "${(zoom * 100).roundToInt()}%",
-                    color = KineticSecondary,
+                    color = KineticTextSecondary,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.padding(horizontal = 6.dp)
+                    modifier = Modifier.width(38.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
-
-                IconButton(
-                    onClick = onZoomIn,
-                    modifier = Modifier.size(28.dp)
-                ) {
+                IconButton(onClick = onZoomIn, modifier = Modifier.size(32.dp)) {
                     Icon(
                         imageVector = Icons.Default.Add,
-                        contentDescription = "Zoom In",
+                        contentDescription = "Zoom in",
                         tint = KineticTextSecondary,
                         modifier = Modifier.size(16.dp)
                     )
                 }
-
-                Box(
+                IconButton(
+                    onClick = onFitNotes,
                     modifier = Modifier
-                        .height(14.dp)
-                        .width(1.dp)
-                        .background(Color(0x28FFFFFF))
-                        .padding(horizontal = 2.dp)
-                )
-
-                Text(
-                    text = "Reset",
-                    color = KineticTextMuted,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier
-                        .clickable { onResetZoom() }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                )
+                        .size(32.dp)
+                        .testTag("btn_fit_notes")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CenterFocusStrong,
+                        contentDescription = "Fit notes",
+                        tint = KineticSecondary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
         }
     }

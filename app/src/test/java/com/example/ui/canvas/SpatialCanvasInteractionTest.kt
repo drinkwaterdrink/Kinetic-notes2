@@ -49,7 +49,7 @@ class SpatialCanvasInteractionTest {
                 onTransformChange = { _, _, _ -> },
                 onZoomIn = {},
                 onZoomOut = {},
-                onResetZoom = {},
+                onFitNotes = {},
                 onCardMove = onCardMove,
                 onNoteClick = onNoteClick,
                 onCardTapInLinkingMode = onCardTapInLinkingMode,

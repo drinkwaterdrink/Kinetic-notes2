@@ -1,6 +1,19 @@
 package com.example.data.local
 
 object SampleData {
+    const val GROUP_ID_ARCHITECTURE = "group_architecture"
+    const val GROUP_ID_CODE = "group_code"
+    const val GROUP_ID_RESEARCH = "group_research"
+    const val GROUP_ID_PRODUCT = "group_product"
+
+    /** Demo groups, only ever inserted into a brand new database. */
+    fun getInitialGroups(): List<NoteGroupEntity> = listOf(
+        NoteGroupEntity(id = GROUP_ID_ARCHITECTURE, name = "Architecture", colorHex = "#6366F1", icon = "🏛️", orderIndex = 0),
+        NoteGroupEntity(id = GROUP_ID_PRODUCT, name = "Product", colorHex = "#10B981", icon = "🚀", orderIndex = 1),
+        NoteGroupEntity(id = GROUP_ID_CODE, name = "Code", colorHex = "#38BDF8", icon = "💻", orderIndex = 2),
+        NoteGroupEntity(id = GROUP_ID_RESEARCH, name = "Research", colorHex = "#F59E0B", icon = "🔬", orderIndex = 3)
+    )
+
     val NOTE_ID_ARCH = "node_1"
     val NOTE_ID_CODE = "node_2"
     val NOTE_ID_SPRINT = "node_3"
@@ -15,6 +28,7 @@ object SampleData {
             type = NoteType.DOC,
             colorHex = "#6366F1", // Indigo
             tag = "Architecture",
+            groupId = GROUP_ID_ARCHITECTURE,
             folder = "Architecture",
             x = 40f,
             y = 50f,
@@ -31,6 +45,7 @@ object SampleData {
             type = NoteType.CODE,
             colorHex = "#38BDF8", // Cyan
             tag = "Code",
+            groupId = GROUP_ID_CODE,
             folder = "Code",
             x = 300f,
             y = 50f,
@@ -47,6 +62,7 @@ object SampleData {
             type = NoteType.CHECKLIST,
             colorHex = "#10B981", // Emerald
             tag = "Product",
+            groupId = GROUP_ID_PRODUCT,
             folder = "Product",
             x = 40f,
             y = 260f,
@@ -79,6 +95,7 @@ object SampleData {
             type = NoteType.DOC,
             colorHex = "#F59E0B", // Amber
             tag = "Research",
+            groupId = GROUP_ID_RESEARCH,
             folder = "Research",
             x = 170f,
             y = 470f,

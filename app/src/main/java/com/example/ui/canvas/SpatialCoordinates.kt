@@ -19,6 +19,13 @@ object SpatialGridConfig {
     const val MAX_ZOOM = 2.0f
     const val CARD_WIDTH_WORLD = 210f
     const val CARD_HEIGHT_WORLD = 140f
+
+    /**
+     * Smallest dot spacing drawn on screen. Below this the grid is halved in density
+     * (level of detail) so zooming out can never explode the dot count or turn the
+     * background into noise.
+     */
+    const val MIN_GRID_SPACING_PX = 22f
 }
 
 data class ViewportTransform(
@@ -164,5 +171,107 @@ fun calculateLinkAnchors(
         targetAnchor = tAnchor,
         controlPoint1 = c1,
         controlPoint2 = c2
+    )
+}
+
+/**
+ * Axis-aligned bounds of a set of cards, in world coordinates.
+ */
+data class WorldBounds(
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float
+) {
+    val width: Float get() = (right - left).coerceAtLeast(1f)
+    val height: Float get() = (bottom - top).coerceAtLeast(1f)
+    val centerX: Float get() = (left + right) / 2f
+    val centerY: Float get() = (top + bottom) / 2f
+}
+
+/**
+ * World bounds covering every supplied note card, or null when there is nothing to frame.
+ */
+fun noteWorldBounds(
+    notes: List<NoteEntity>,
+    cardWidth: Float = SpatialGridConfig.CARD_WIDTH_WORLD,
+    cardHeight: Float = SpatialGridConfig.CARD_HEIGHT_WORLD
+): WorldBounds? {
+    if (notes.isEmpty()) return null
+    var left = Float.MAX_VALUE
+    var top = Float.MAX_VALUE
+    var right = -Float.MAX_VALUE
+    var bottom = -Float.MAX_VALUE
+    notes.forEach { note ->
+        if (note.x < left) left = note.x
+        if (note.y < top) top = note.y
+        if (note.x + cardWidth > right) right = note.x + cardWidth
+        if (note.y + cardHeight > bottom) bottom = note.y + cardHeight
+    }
+    return WorldBounds(left, top, right, bottom)
+}
+
+/**
+ * "Fit Notes": centres [bounds] in the viewport and picks the largest zoom (within limits)
+ * that keeps everything on screen with a comfortable padding margin.
+ */
+fun fitViewportToBounds(
+    bounds: WorldBounds,
+    viewportWidthPx: Float,
+    viewportHeightPx: Float,
+    paddingPx: Float = 72f,
+    minZoom: Float = SpatialGridConfig.MIN_ZOOM,
+    maxZoom: Float = SpatialGridConfig.MAX_ZOOM
+): ViewportTransform {
+    val usableWidth = (viewportWidthPx - paddingPx * 2f).coerceAtLeast(1f)
+    val usableHeight = (viewportHeightPx - paddingPx * 2f).coerceAtLeast(1f)
+
+    val zoom = kotlin.math.min(usableWidth / bounds.width, usableHeight / bounds.height)
+        .coerceIn(minZoom, maxZoom)
+
+    return ViewportTransform(
+        panX = viewportWidthPx / 2f - bounds.centerX * zoom,
+        panY = viewportHeightPx / 2f - bounds.centerY * zoom,
+        zoom = zoom
+    )
+}
+
+/**
+ * True when at least one card overlaps the visible viewport rectangle. Used to offer a
+ * "Find notes" escape hatch after the user has panned away into empty space.
+ */
+fun isAnyNoteVisible(
+    notes: List<NoteEntity>,
+    viewport: ViewportTransform,
+    viewportWidthPx: Float,
+    viewportHeightPx: Float,
+    cardWidth: Float = SpatialGridConfig.CARD_WIDTH_WORLD,
+    cardHeight: Float = SpatialGridConfig.CARD_HEIGHT_WORLD
+): Boolean {
+    if (notes.isEmpty() || viewportWidthPx <= 0f || viewportHeightPx <= 0f) return true
+    return notes.any { note ->
+        val topLeft = viewport.worldToScreen(Offset(note.x, note.y))
+        val bottomRight = viewport.worldToScreen(Offset(note.x + cardWidth, note.y + cardHeight))
+        bottomRight.x > 0f && topLeft.x < viewportWidthPx &&
+            bottomRight.y > 0f && topLeft.y < viewportHeightPx
+    }
+}
+
+/**
+ * Where a brand new card should be dropped: visually centred in the current viewport,
+ * with a small cascade so repeated taps do not stack cards exactly on top of each other.
+ */
+fun spawnPositionForNewCard(
+    viewport: ViewportTransform,
+    viewportWidthPx: Float,
+    viewportHeightPx: Float,
+    cascadeOffsetWorld: Float = 0f,
+    cardWidth: Float = SpatialGridConfig.CARD_WIDTH_WORLD,
+    cardHeight: Float = SpatialGridConfig.CARD_HEIGHT_WORLD
+): Offset {
+    val centerWorld = viewport.screenToWorld(Offset(viewportWidthPx / 2f, viewportHeightPx / 2f))
+    return Offset(
+        x = centerWorld.x - cardWidth / 2f + cascadeOffsetWorld,
+        y = centerWorld.y - cardHeight / 2f + cascadeOffsetWorld
     )
 }
