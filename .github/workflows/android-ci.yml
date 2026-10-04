@@ -105,7 +105,6 @@ jobs:
           echo "apksigner=$apksigner_bin"
           test -f "$aapt_bin"
           test -f "$apksigner_bin"
-          chmod +x "$aapt_bin" "$apksigner_bin"
           echo "aapt badging:"
           "$aapt_bin" dump badging "$apk" | tee dist/aapt-badging.txt
           echo "apksigner certificates:"
