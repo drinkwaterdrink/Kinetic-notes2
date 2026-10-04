@@ -110,10 +110,10 @@ jobs:
           echo "apksigner certificates:"
           "$apksigner_bin" verify --print-certs "$apk" | tee dist/apksigner-certs.txt
           package_line=$(sed -n "s/^package: //p" dist/aapt-badging.txt | head -1)
-          application_id=$(printf '%s\n' "$package_line" | sed -n "s/.*name='\\([^']*\\)'.*/\\1/p")
-          version_code=$(printf '%s\n' "$package_line" | sed -n "s/.*versionCode='\\([^']*\\)'.*/\\1/p")
-          version_name=$(printf '%s\n' "$package_line" | sed -n "s/.*versionName='\\([^']*\\)'.*/\\1/p")
-          fingerprint=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' dist/apksigner-certs.txt | head -1)
+          application_id=$(printf '%s\n' "$package_line" | awk -F"'" '{print $2}')
+          version_code=$(printf '%s\n' "$package_line" | awk -F"'" '{print $4}')
+          version_name=$(printf '%s\n' "$package_line" | awk -F"'" '{print $6}')
+          fingerprint=$(sed -n 's/.*certificate SHA-256 digest: //p' dist/apksigner-certs.txt | head -1)
           echo "parsed_application_id=$application_id"
           echo "parsed_version_code=$version_code"
           echo "parsed_version_name=$version_name"
