@@ -45,7 +45,13 @@ android {
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
     }
-    debug { signingConfig = signingConfigs.getByName("debugConfig") }
+    // The EXP debug build is intentionally a different Android application so it can be
+    // installed next to the regular Kinetic Canvas app without replacing it.
+    debug {
+      signingConfig = signingConfigs.getByName("debugConfig")
+      applicationIdSuffix = ".exp"
+      versionNameSuffix = "-EXP"
+    }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11

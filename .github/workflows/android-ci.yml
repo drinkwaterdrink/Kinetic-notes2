@@ -63,6 +63,11 @@ jobs:
           gradle testDebugUnitTest assembleDebug lintDebug \
             --stacktrace --no-configuration-cache --console=plain 2>&1 | tee -a ci.log
 
+      - name: Package installable EXP APK
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/Kinetic Canvas EXP.apk"
+
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -75,6 +80,7 @@ jobs:
             app/build/test-results/**
             app/build/reports/lint-results-*.html
             app/build/reports/lint-results-*.xml
+            dist/Kinetic Canvas EXP.apk
 
       # GitHub's raw log host is not reachable from the agent sandbox, so failures are
       # republished through the REST API (readable with `gh issue view`).
