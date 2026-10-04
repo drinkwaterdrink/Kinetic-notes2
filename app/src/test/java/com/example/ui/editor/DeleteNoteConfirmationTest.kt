@@ -1,8 +1,7 @@
 package com.example.ui.editor
 
-import androidx.compose.ui.test.assertDoesNotExist
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import com.example.data.local.NoteEntity
@@ -58,11 +57,11 @@ class DeleteNoteConfirmationTest {
         setEditor { deleteCalls++ }
 
         composeRule.onNodeWithTag("btn_delete_note").performClick()
-        composeRule.onNodeWithTag("confirm_delete_note").assertExists()
+        composeRule.onNodeWithTag("confirm_delete_note").fetchSemanticsNode()
         assertEquals("Opening confirmation must not delete", 0, deleteCalls)
 
         composeRule.onNodeWithTag("cancel_delete_note").performClick()
-        composeRule.onNodeWithTag("confirm_delete_note").assertDoesNotExist()
+        assertEquals(0, composeRule.onAllNodesWithTag("confirm_delete_note").fetchSemanticsNodes().size)
         assertEquals("Cancel must leave the draft and note intact", 0, deleteCalls)
     }
 
@@ -76,6 +75,6 @@ class DeleteNoteConfirmationTest {
         composeRule.waitForIdle()
 
         assertEquals("Confirm must dispatch the intended delete once", 1, deleteCalls)
-        composeRule.onNodeWithTag("confirm_delete_note").assertDoesNotExist()
+        assertEquals(0, composeRule.onAllNodesWithTag("confirm_delete_note").fetchSemanticsNodes().size)
     }
 }
