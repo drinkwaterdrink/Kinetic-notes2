@@ -206,6 +206,23 @@ jobs:
             fi
             exit "$migration_status"
 
+      # The emulator action can fail before its script starts. Record that outcome so the
+      # diagnostic artifact distinguishes emulator startup failure from compile/test failure.
+      - name: Record connected-test runner status
+        if: always()
+        run: |
+          mkdir -p app/build/ci-instrumentation
+          {
+            echo "runner_outcome=${{ steps.instrumentation.outcome }}"
+            echo "runner_conclusion=${{ steps.instrumentation.conclusion }}"
+            if [ -f app/build/ci-instrumentation/android-test-compilation.log ]; then
+              echo "phase_logs=present; emulator reached the script"
+            else
+              echo "phase_logs=absent; emulator action likely failed before the script started"
+            fi
+          } > app/build/ci-instrumentation/emulator-runner-status.log
+          cat app/build/ci-instrumentation/emulator-runner-status.log
+
       - name: Upload diagnostic reports
         if: always()
         uses: actions/upload-artifact@v4
