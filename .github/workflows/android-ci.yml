@@ -77,10 +77,6 @@ jobs:
             --stacktrace --no-configuration-cache --console=plain 2>&1 | tee -a ci.log
 
       - name: Instrumented migration and persistence checks
-        id: instrumentation
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -89,46 +85,8 @@ jobs:
           profile: Pixel_2
           disable-animations: true
           script: |
-            set +e
             gradle --stop || true
-            gradle connectedDebugAndroidTest --stacktrace --no-configuration-cache --no-daemon --console=plain > connected.log 2>&1
-            status=$?
-            {
-              echo "----- connectedDebugAndroidTest -----"
-              cat connected.log
-            } >> "$GITHUB_WORKSPACE/ci.log"
-            if command -v gh >/dev/null 2>&1 && [ -n "$GH_TOKEN" ]; then
-              {
-                echo "Instrumentation status: $status"
-                echo '```'
-                cat connected.log
-                echo '```'
-              } > connected-report.md
-              gh issue create \
-                --repo "$GITHUB_REPOSITORY" \
-                --title "Instrumentation details ${GITHUB_SHA:0:7}" \
-                --body-file connected-report.md || true
-            fi
-            cat connected.log
-            exit "$status"
-
-      - name: Preserve instrumentation result
-        if: always()
-        run: |
-          echo "Instrumentation step outcome: ${{ steps.instrumentation.outcome }}"
-          if [ -f connected.log ]; then
-            {
-              echo "----- connectedDebugAndroidTest (host capture) -----"
-              cat connected.log
-            } >> ci.log
-            cat connected.log
-          else
-            echo "No host-side connected.log was produced by the emulator action."
-          fi
-
-      - name: Enforce instrumentation result
-        if: always()
-        run: test "${{ steps.instrumentation.outcome }}" = success
+            gradle connectedDebugAndroidTest --stacktrace --no-configuration-cache --no-daemon --console=plain
 
       - name: Package installable EXP APK
         run: |
