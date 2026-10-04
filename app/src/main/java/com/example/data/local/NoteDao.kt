@@ -6,6 +6,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -26,14 +27,40 @@ interface NoteDao {
     @Query("SELECT * FROM notes")
     suspend fun getAllNotesDirect(): List<NoteEntity>
 
+    /**
+     * DANGEROUS for existing rows: SQLite's REPLACE conflict strategy DELETEs the conflicting
+     * row before inserting the new one. With foreign keys enabled (Room enables them by default)
+     * that delete cascades into [NoteLinkEntity] and [ChecklistItemEntity], silently destroying
+     * a note's links and checklist items.
+     *
+     * Only use this for rows that are known not to exist yet (brand new notes / seeding).
+     * For saving an edited note use [upsertNote] or a targeted UPDATE query instead.
+     */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNote(note: NoteEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNotes(notes: List<NoteEntity>)
 
+    /**
+     * Safe whole-entity save: inserts when the row is new, otherwise performs a real UPDATE.
+     * The row is never deleted, so foreign-key children (links, checklist items) survive.
+     */
+    @Upsert
+    suspend fun upsertNote(note: NoteEntity)
+
+    @Upsert
+    suspend fun upsertNotes(notes: List<NoteEntity>)
+
     @Update
     suspend fun updateNote(note: NoteEntity)
+
+    /**
+     * Targeted editor save. Touches only the text columns, so it can never clobber a position
+     * update that happened on the board while the editor was open.
+     */
+    @Query("UPDATE notes SET title = :title, content = :content, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateNoteTitleAndContent(id: String, title: String, content: String, updatedAt: Long): Int
 
     @Delete
     suspend fun deleteNote(note: NoteEntity)

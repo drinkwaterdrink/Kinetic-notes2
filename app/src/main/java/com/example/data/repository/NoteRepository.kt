@@ -56,9 +56,28 @@ class NoteRepository(
         return id
     }
 
+    /**
+     * Whole-entity save for an existing or new note.
+     *
+     * Uses UPSERT (insert-or-update) rather than INSERT OR REPLACE: REPLACE deletes the existing
+     * row first, which cascades into note_links / checklist_items and destroys them.
+     */
     suspend fun saveNote(note: NoteEntity) {
-        noteDao.insertNote(note.copy(updatedAt = System.currentTimeMillis()))
+        noteDao.upsertNote(note.copy(updatedAt = System.currentTimeMillis()))
     }
+
+    /**
+     * Durable editor save. Only the text columns are written, so concurrent board moves
+     * (x/y) and metadata changes are never overwritten by a stale editor snapshot.
+     *
+     * @return number of rows updated (0 when the note no longer exists).
+     */
+    suspend fun saveNoteText(
+        id: String,
+        title: String,
+        content: String,
+        updatedAt: Long = System.currentTimeMillis()
+    ): Int = noteDao.updateNoteTitleAndContent(id, title, content, updatedAt)
 
     suspend fun insertNotes(notes: List<NoteEntity>) = noteDao.insertNotes(notes)
     suspend fun insertLinks(links: List<NoteLinkEntity>) = noteDao.insertLinks(links)

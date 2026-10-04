@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 enum class VaultViewMode {
@@ -32,6 +33,27 @@ data class FolderItem(
     val colorHex: String,
     val icon: String = "📁",
     val isCustom: Boolean = false
+)
+
+/**
+ * Durability state of the note currently open in the editor.
+ *
+ * Contract:
+ * typing -> [UNSAVED] (editor-local draft only, no database write)
+ * debounce elapsed / Save pressed / Back pressed -> [SAVING] -> [SAVED]
+ * write failed -> [ERROR] (draft is kept in the editor so nothing is lost)
+ */
+enum class EditorSaveStatus {
+    SAVED,
+    UNSAVED,
+    SAVING,
+    ERROR
+}
+
+data class EditorSaveState(
+    val status: EditorSaveStatus = EditorSaveStatus.SAVED,
+    val lastSavedAt: Long? = null,
+    val errorMessage: String? = null
 )
 
 data class NotesUiState(
@@ -53,7 +75,8 @@ data class NotesUiState(
     val aiSummaryOutput: String? = null,
     val activeChecklist: List<ChecklistItemEntity> = emptyList(),
     val userNotice: String? = null,
-    val isAskGeminiExpanded: Boolean = false
+    val isAskGeminiExpanded: Boolean = false,
+    val editorSave: EditorSaveState = EditorSaveState()
 )
 
 class NotesViewModel(
@@ -228,7 +251,8 @@ class NotesViewModel(
             selectedNote = note,
             isFocusSheetOpen = true,
             aiSuggestedLinks = emptyList(),
-            aiSummaryOutput = null
+            aiSummaryOutput = null,
+            editorSave = EditorSaveState(status = EditorSaveStatus.SAVED)
         )
         viewModelScope.launch {
             loadChecklist(note.id)
@@ -259,12 +283,15 @@ class NotesViewModel(
     }
 
     fun closeFocusSheet() {
-        _uiState.value = _uiState.value.copy(
-            isFocusSheetOpen = false,
-            selectedNote = null,
-            aiSuggestedLinks = emptyList(),
-            aiSummaryOutput = null
-        )
+        _uiState.update {
+            it.copy(
+                isFocusSheetOpen = false,
+                selectedNote = null,
+                aiSuggestedLinks = emptyList(),
+                aiSummaryOutput = null,
+                editorSave = EditorSaveState()
+            )
+        }
     }
 
     fun createNewNoteAtViewportCenter(type: NoteType = NoteType.DOC) {
@@ -311,11 +338,76 @@ class NotesViewModel(
         createNewNoteAtViewportCenter(type)
     }
 
+    /**
+     * Whole-entity save used for editor metadata changes (colour, group, pin, type...).
+     * Text edits must go through [saveEditorDraft] instead so that individual keystrokes
+     * never hit the database.
+     */
     fun updateSelectedNote(updated: NoteEntity) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(selectedNote = updated)
+            _uiState.update { it.copy(selectedNote = updated) }
             repository.saveNote(updated)
         }
+    }
+
+    /**
+     * Called by the editor the first time a draft diverges from what is on disk.
+     * Pure UI state - deliberately performs no database work.
+     */
+    fun markEditorDirty() {
+        if (_uiState.value.editorSave.status == EditorSaveStatus.UNSAVED) return
+        _uiState.update {
+            it.copy(editorSave = it.editorSave.copy(status = EditorSaveStatus.UNSAVED, errorMessage = null))
+        }
+    }
+
+    /**
+     * Durable flush of the editor draft: debounced autosave, the explicit Save button and
+     * Back/Done all funnel through here.
+     *
+     * @param onSaved invoked on the main dispatcher once the write has completed (or failed),
+     *   which is what makes "Back flushes pending changes before leaving" safe.
+     */
+    fun saveEditorDraft(
+        noteId: String,
+        title: String,
+        content: String,
+        onSaved: (() -> Unit)? = null
+    ) {
+        _uiState.update { it.copy(editorSave = it.editorSave.copy(status = EditorSaveStatus.SAVING)) }
+        viewModelScope.launch {
+            val savedAt = System.currentTimeMillis()
+            try {
+                repository.saveNoteText(id = noteId, title = title, content = content, updatedAt = savedAt)
+                _uiState.update { state ->
+                    val selected = state.selectedNote
+                    state.copy(
+                        selectedNote = if (selected?.id == noteId) {
+                            selected.copy(title = title, content = content, updatedAt = savedAt)
+                        } else {
+                            selected
+                        },
+                        editorSave = EditorSaveState(status = EditorSaveStatus.SAVED, lastSavedAt = savedAt)
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        editorSave = it.editorSave.copy(
+                            status = EditorSaveStatus.ERROR,
+                            errorMessage = e.message ?: "Could not save note"
+                        )
+                    )
+                }
+            } finally {
+                onSaved?.invoke()
+            }
+        }
+    }
+
+    /** Flushes the pending draft and only then leaves the editor. */
+    fun saveEditorDraftAndClose(noteId: String, title: String, content: String) {
+        saveEditorDraft(noteId, title, content) { closeFocusSheet() }
     }
 
     fun deleteSelectedNote() {
