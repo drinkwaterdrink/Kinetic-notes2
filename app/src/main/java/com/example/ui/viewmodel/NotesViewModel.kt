@@ -152,7 +152,9 @@ class NotesViewModel(
             val matchesSearch = state.searchQuery.isBlank() ||
                     note.title.contains(state.searchQuery, ignoreCase = true) ||
                     note.content.contains(state.searchQuery, ignoreCase = true) ||
-                    note.tag.contains(state.searchQuery, ignoreCase = true)
+                    note.tag.contains(state.searchQuery, ignoreCase = true) ||
+                    note.folder.contains(state.searchQuery, ignoreCase = true) ||
+                    note.type.name.contains(state.searchQuery, ignoreCase = true)
             matchesGroup && matchesTag && matchesSearch
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
