@@ -1,0 +1,116 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "reconstructed-v2-fixture",
+    "entities": [
+      {
+        "tableName": "notes",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `content` TEXT NOT NULL, `type` TEXT NOT NULL, `colorHex` TEXT NOT NULL, `tag` TEXT NOT NULL, `folder` TEXT NOT NULL, `x` REAL NOT NULL, `y` REAL NOT NULL, `isPinned` INTEGER NOT NULL, `isLocked` INTEGER NOT NULL, `dueDateText` TEXT, `codeSnippet` TEXT, `zIndex` INTEGER NOT NULL, `strokeData` TEXT, `audioPath` TEXT, `audioDurationMs` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          { "fieldPath": "id", "columnName": "id", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "title", "columnName": "title", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "content", "columnName": "content", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "type", "columnName": "type", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "colorHex", "columnName": "colorHex", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "tag", "columnName": "tag", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "folder", "columnName": "folder", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "x", "columnName": "x", "affinity": "REAL", "notNull": true },
+          { "fieldPath": "y", "columnName": "y", "affinity": "REAL", "notNull": true },
+          { "fieldPath": "isPinned", "columnName": "isPinned", "affinity": "INTEGER", "notNull": true },
+          { "fieldPath": "isLocked", "columnName": "isLocked", "affinity": "INTEGER", "notNull": true },
+          { "fieldPath": "dueDateText", "columnName": "dueDateText", "affinity": "TEXT", "notNull": false },
+          { "fieldPath": "codeSnippet", "columnName": "codeSnippet", "affinity": "TEXT", "notNull": false },
+          { "fieldPath": "zIndex", "columnName": "zIndex", "affinity": "INTEGER", "notNull": true },
+          { "fieldPath": "strokeData", "columnName": "strokeData", "affinity": "TEXT", "notNull": false },
+          { "fieldPath": "audioPath", "columnName": "audioPath", "affinity": "TEXT", "notNull": false },
+          { "fieldPath": "audioDurationMs", "columnName": "audioDurationMs", "affinity": "INTEGER", "notNull": true },
+          { "fieldPath": "createdAt", "columnName": "createdAt", "affinity": "INTEGER", "notNull": true },
+          { "fieldPath": "updatedAt", "columnName": "updatedAt", "affinity": "INTEGER", "notNull": true }
+        ],
+        "primaryKey": { "columnNames": ["id"], "autoGenerate": false },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "note_links",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `sourceId` TEXT NOT NULL, `targetId` TEXT NOT NULL, `colorHex` TEXT NOT NULL, `label` TEXT, PRIMARY KEY(`id`), FOREIGN KEY(`sourceId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE, FOREIGN KEY(`targetId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)",
+        "fields": [
+          { "fieldPath": "id", "columnName": "id", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "sourceId", "columnName": "sourceId", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "targetId", "columnName": "targetId", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "colorHex", "columnName": "colorHex", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "label", "columnName": "label", "affinity": "TEXT", "notNull": false }
+        ],
+        "primaryKey": { "columnNames": ["id"], "autoGenerate": false },
+        "indices": [
+          {
+            "name": "index_note_links_sourceId",
+            "unique": false,
+            "columnNames": ["sourceId"],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_note_links_sourceId` ON `${TABLE_NAME}` (`sourceId`)"
+          },
+          {
+            "name": "index_note_links_targetId",
+            "unique": false,
+            "columnNames": ["targetId"],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_note_links_targetId` ON `${TABLE_NAME}` (`targetId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "notes",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": ["sourceId"],
+            "referencedColumns": ["id"]
+          },
+          {
+            "table": "notes",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": ["targetId"],
+            "referencedColumns": ["id"]
+          }
+        ]
+      },
+      {
+        "tableName": "checklist_items",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `noteId` TEXT NOT NULL, `text` TEXT NOT NULL, `isChecked` INTEGER NOT NULL, `orderIndex` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`noteId`) REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)",
+        "fields": [
+          { "fieldPath": "id", "columnName": "id", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "noteId", "columnName": "noteId", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "text", "columnName": "text", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "isChecked", "columnName": "isChecked", "affinity": "INTEGER", "notNull": true },
+          { "fieldPath": "orderIndex", "columnName": "orderIndex", "affinity": "INTEGER", "notNull": true }
+        ],
+        "primaryKey": { "columnNames": ["id"], "autoGenerate": false },
+        "indices": [
+          {
+            "name": "index_checklist_items_noteId",
+            "unique": false,
+            "columnNames": ["noteId"],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_checklist_items_noteId` ON `${TABLE_NAME}` (`noteId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "notes",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": ["noteId"],
+            "referencedColumns": ["id"]
+          }
+        ]
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'reconstructed-v2-fixture')"
+    ]
+  }
+}
