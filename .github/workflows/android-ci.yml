@@ -497,7 +497,11 @@ jobs:
             else
               echo "no ci.log produced"
             fi
-            for f in app/build/ci-instrumentation/*.log; do
+            for f in app/build/ci-instrumentation/migration-test-execution.log \
+                     app/build/ci-instrumentation/test-summary.log \
+                     app/build/ci-instrumentation/emulator-runner-status.log \
+                     app/build/ci-instrumentation/emulator-startup.log \
+                     app/build/ci-instrumentation/signing-upgrade.log; do
               [ -f "$f" ] || continue
               echo "----- $f -----"
               tail -n 160 "$f"
@@ -516,6 +520,13 @@ jobs:
               } >> body.md
             fi
           done
+          # Keep the issue small enough for GitHub while retaining the migration failure and
+          # phase status. The complete report remains in the uploaded artifact.
+          if [ "$(wc -c < body.md)" -gt 60000 ]; then
+            head -c 60000 body.md > body-truncated.md
+            printf '\n\n[body truncated; see the diagnostic artifact]\n' >> body-truncated.md
+            mv body-truncated.md body.md
+          fi
           gh issue create --title "CI failure ${GITHUB_SHA:0:7}" --body-file body.md
 
   publish:
