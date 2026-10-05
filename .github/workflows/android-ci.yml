@@ -167,7 +167,6 @@ jobs:
       - name: Prepare Android emulator image
         id: emulator_image
         if: steps.android_test_compile.outcome == 'success'
-        continue-on-error: true
         run: |
           set +e
           mkdir -p app/build/ci-instrumentation
@@ -196,7 +195,6 @@ jobs:
       - name: Start Android emulator with diagnostics
         id: emulator_start
         if: steps.emulator_image.outcome == 'success'
-        continue-on-error: true
         run: |
           set +e
           mkdir -p app/build/ci-instrumentation
@@ -211,6 +209,12 @@ jobs:
           echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$log"
           echo "ANDROID_SDK_HOME=$ANDROID_SDK_HOME" >> "$log"
           echo "adb_bin=$adb_bin" >> "$log"
+          if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+            echo "KVM_REQUIRED: /dev/kvm is not readable and writable by this runner; x86_64 emulator execution is unavailable." >> "$log"
+            ls -l /dev/kvm >> "$log" 2>&1 || true
+            id >> "$log" 2>&1 || true
+            exit 2
+          fi
           "$adb_bin" start-server >> "$log" 2>&1
           "$emulator_bin" -avd kinetic-api35 -no-window -no-audio -no-boot-anim \
             -no-snapshot -gpu swiftshader_indirect -verbose >> "$log" 2>&1 &
@@ -243,7 +247,6 @@ jobs:
       - name: Instrumented migration and persistence checks
         id: instrumentation
         if: always() && steps.emulator_start.outcome == 'success'
-        continue-on-error: true
         run: |
           set +e
           mkdir -p app/build/ci-instrumentation
