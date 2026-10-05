@@ -491,7 +491,7 @@ jobs:
             echo ""
             echo '```'
             if [ -f ci.log ]; then
-              grep -E "^(e: |w: |FAILURE|\* What went wrong|\* Try|Caused by|Execution failed|> Task .*FAILED|[A-Za-z0-9_.]+ > .* FAILED)" ci.log | tail -n 120
+              grep -E "^(e: |w: |FAILURE|\* What went wrong|\* Try|Caused by|Execution failed|> Task .*FAILED|[A-Za-z0-9_.]+ > .* FAILED)" ci.log | tail -n 120 || true
               echo "----- tail of ci.log -----"
               tail -n 120 ci.log
             else
