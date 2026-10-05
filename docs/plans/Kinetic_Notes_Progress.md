@@ -60,8 +60,8 @@ The plan explicitly defers I-002 editor save reliability, I-003 Trash/history, e
 | Mask locked checklist/code previews, keep Graph refresh privacy-safe, and reject unknown AI link targets | A-002/A-003/A-024 | Done; source reviewed; no manual device run |
 | Strengthen migration fixture to verify notes, links, checklist rows, and metadata survive v2→v3 | A-013 | Done; execution remains not verified until a device run succeeds |
 | Add editor delete confirmation to every note-delete editor surface | I-001 deletion remedy | Implemented with one-shot confirmation, cancel/dismiss preservation, visible delete failure notices, and focused Compose verification |
-| Separate Android-test compilation, emulator image preparation/boot, migration execution, and reports | A-013 | Implemented; the next CI run captures SDK/AVD, emulator verbose startup, adb/logcat, compilation, test, and reports independently |
-| Upload a metadata-bearing APK artifact without committing binaries | A-014 | Verified in run `37239195565`; artifact `kinetic-canvas-exp-apk-939b445bd16bdd1db0a46f553a62e3535f05a1a7` was uploaded before the failed migration stage, while publication remained gated |
+| Separate Android-test compilation, emulator image preparation/boot, migration execution, and reports | A-013 | Verified in run `37245894202`: Android-test compilation and image preparation passed; explicit startup log captured the `/dev/kvm` permission blocker; migration remained skipped and mandatory |
+| Upload a metadata-bearing APK artifact without committing binaries | A-014 | Verified in run `37245894202`; artifact `kinetic-canvas-exp-apk-b5c266461b95cb8112112e65cf0e4c84c07e9d59` was uploaded before the KVM-blocked migration stage, while publication remained gated |
 | Add genuine Gradle launcher/JAR | A-026 | Done; official Gradle v9.3.1 `gradlew`, `gradlew.bat`, and wrapper JAR are checked in; wrapper JAR SHA-256 is `b3a875ddc1f044746e1b1a55f645584505f4a10438c1afea9f15e92a7c42ec13`, and the distribution checksum is pinned in `gradle-wrapper.properties` |
 
 ## I-001 acceptance and verification ledger
@@ -70,14 +70,14 @@ These are the actual criteria from the complete masterplan. Statuses are intenti
 
 | Criterion | Status | Evidence / remaining issue |
 |---|---|---|
-| **AC1: clean checkout builds through the documented wrapper** | **Not verified** | The official wrapper is checked in and prior CI built with `./gradlew`, but the new bounded changes have not yet completed a fresh CI run. Local `./gradlew --version` is blocked by missing Java. |
+| **AC1: clean checkout builds through the documented wrapper** | **Passed** | Fresh run `37245894202` checked out the branch and passed `./gradlew testDebugUnitTest assembleDebug lintDebug`; the separate `./gradlew :app:assembleDebugAndroidTest` phase also passed. Local wrapper execution remains blocked by missing Java. |
 | **AC2: missing key/401/network/empty response yields failure, never canned success** | **Passed** | `GeminiServiceTruthfulnessTest` covers missing configuration, HTTP 503, empty candidates, and usable content; previous wrapper-based CI build/unit/lint passed. No live provider call was made. |
 | **AC3: no false encryption claim or legacy-private outgoing AI/search content** | **Passed (source/tests)** | UI says “Locked note,” not encrypted; locked content is excluded from search/Graph/AI eligibility and sensitive previews are masked. Existing privacy tests/source checks pass; this is not a claim of cryptographic protection. |
-| **AC4: genuine 2→3 instrumentation runs; other supported installed versions are enumerated** | **Not verified** | `NoteDatabase.MIGRATION_2_3` and the reconstructed v2 fixture exist, but the latest emulator action failed before its script. Supported database versions are now explicitly enumerated in `Kinetic_Notes_Room_Migration_Evidence.md`: current v3 opens directly; v2 has the explicit 2→3 migration; no v1 or earlier migration is registered/supported. A successful device run is still required. |
+| **AC4: genuine 2→3 instrumentation runs; other supported installed versions are enumerated** | **Not verified** | Fresh run `37245894202` passed Android-test compilation and emulator-image preparation, then failed at the explicit emulator preflight because `/dev/kvm` was not readable/writable; migration instrumentation was skipped and remains mandatory. Supported versions are enumerated in `Kinetic_Notes_Room_Migration_Evidence.md`: v3 current; v2 via `MIGRATION_2_3`; v1 and earlier unsupported. |
 | **AC5: stable-signed consecutive EXP builds upgrade without uninstall; old mismatched certificate is reported as a migration blocker** | **Not verified** | The user-installed APK smoke-tested successfully, but it used an ephemeral certificate `eac39d02b0474a94f4add256eb4ea3188dd521f0f9e9b774cb6c8b47ebd230bd`. No secure stable key or installed-app certificate comparison is available; consecutive stable builds have not been produced. The workflow reports mismatched certificates as an update blocker and does not recommend uninstalling. |
-| Focused editor-delete confirmation | **Passed (source/test pending CI)** | Full-screen editor and the secondary editor surface now require confirmation; cancel/dismiss does not invoke deletion; confirm is one-shot and the ViewModel catches failures visibly. `DeleteNoteConfirmationTest` covers no delete before confirmation, cancel preservation, and exactly one confirm dispatch. |
+| Focused editor-delete confirmation | **Passed (automated)** | Full-screen editor and the secondary editor surface now require confirmation; cancel/dismiss does not invoke deletion; confirm is one-shot and the ViewModel catches failures visibly. `DeleteNoteConfirmationTest` compiled and ran in fresh CI run `37245894202`, covering no delete before confirmation, cancel preservation, and exactly one confirm dispatch. |
 | User manual smoke test | **Passed as smoke test only** | User installed the latest APK and reported that it launched and worked. This does not prove AC4 migration correctness or AC5 signing continuity. |
-| Installable APK packaging | **Passed in prior run** | Run `37239195565` uploaded artifact `11317140250` before the failed connected stage. Metadata: application ID `com.aistudio.kineticnotes.kxmpzq.exp`, version `1.0-EXP`, APK SHA-256 `e4754fa2a34c0b82043a68d31e2bc69a666cab85abba2b52e1b5677de842171b`, ephemeral certificate SHA-256 `eac39d02b0474a94f4add256eb4ea3188dd521f0f9e9b774cb6c8b47ebd230bd`. |
+| Installable APK packaging | **Passed** | Run `37245894202` uploaded artifact `11318869519` before the KVM-blocked emulator stage. Metadata: application ID `com.aistudio.kineticnotes.kxmpzq.exp`, version `1.0-EXP`, APK SHA-256 `b807646aad79e4186be5a5058520ba0c4dda66bc1c5ec8edb327faf3a1a11efb`, ephemeral certificate SHA-256 `e16c917a54d673da0fa27e17a569cffbe4cf31bbb7975978dd9224403a5cc919`. |
 | No later packet was implemented | **Passed (scope review)** | No I-002 save rewrite, Trash/history, encryption, backup/restore package, structured-document conversion, attachments, stacks, provider framework, or sync packet was added. |
 
 ## Verification commands/evidence
@@ -89,12 +89,14 @@ These are the actual criteria from the complete masterplan. Statuses are intenti
 - The user installed the prior APK on a phone and reported that it launches and works. This is recorded as a manual smoke test only; no migration or signing claim is inferred.
 - `DeleteNoteConfirmationTest` is the focused UI verification for the bounded delete fix. It checks that opening the editor Delete action does not delete, Cancel leaves the action uncommitted, and Confirm dispatches exactly once.
 
-### Prior CI evidence
+### Latest CI evidence
 
-- `./gradlew testDebugUnitTest assembleDebug lintDebug` passed before the connected stage in run `37239195565`, including `GeminiServiceTruthfulnessTest`.
-- Run `37239195565` uploaded APK artifact `11317140250`: `https://github.com/drinkwaterdrink/Kinetic-notes2/actions/runs/37239195565/artifacts/11317140250`.
-- The same run's diagnostic artifact `11317180262` recorded that the previous emulator action failed before its script; Android-test compilation and migration assertions were not verified.
-- The bounded follow-up workflow now compiles Android tests outside emulator execution, prepares the API 35 image/AVD explicitly, captures verbose emulator startup and adb state, runs migration separately, captures logcat/reports on failure, and fails the job unless every mandatory phase succeeds. This workflow change itself requires a fresh CI run.
+- Fresh run `37245894202` passed `./gradlew testDebugUnitTest assembleDebug lintDebug`, including `GeminiServiceTruthfulnessTest` and `DeleteNoteConfirmationTest`.
+- The independent `./gradlew :app:assembleDebugAndroidTest` phase passed.
+- Emulator image preparation and AVD creation passed. The explicit startup log then recorded `KVM_REQUIRED`: `/dev/kvm` was not readable/writable, and Android x86_64 emulation cannot run on that runner. Instrumentation was correctly skipped, not marked passed.
+- Diagnostic artifact `11319256914`: `https://github.com/drinkwaterdrink/Kinetic-notes2/actions/runs/37245894202/artifacts/11319256914`.
+- APK artifact `11318869519`: `https://github.com/drinkwaterdrink/Kinetic-notes2/actions/runs/37245894202/artifacts/11318869519`.
+- The workflow now separates compilation, image preparation, emulator startup, instrumentation, cleanup, logcat, reports, and the mandatory phase gate. The remaining AC4 blocker is runner hardware acceleration, not an opaque action failure.
 
 ## Deviations and remaining issues
 

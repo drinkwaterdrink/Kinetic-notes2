@@ -16,6 +16,7 @@ The APK the user installed was the CI artifact from run `37239195565`:
 - The CI run generated `debug.keystore` on the hosted runner because `KX_EXP_KEYSTORE_B64` was empty for that run. The generated private key was not committed or uploaded.
 - The available GitHub API context cannot read secret values. The latest artifact metadata is direct evidence that the stable secret was not supplied to that build; it is not evidence that a value can be recovered here.
 - A certificate fingerprint is public evidence only. It cannot reconstruct the private signing key.
+- The latest downloadable artifact from run `37245894202` is separately signed with another ephemeral certificate: `e16c917a54d673da0fa27e17a569cffbe4cf31bbb7975978dd9224403a5cc919`, confirming that validation builds are not a stable upgrade chain.
 
 The exact private key for the installed ephemeral artifact is therefore **not recoverable from this workspace or the APK**. Do not print, paste, or commit any private key material.
 
