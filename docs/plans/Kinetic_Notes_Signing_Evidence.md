@@ -16,13 +16,13 @@ The APK the user installed was the CI artifact from run `37239195565`:
 - The CI run generated `debug.keystore` on the hosted runner because `KX_EXP_KEYSTORE_B64` was empty for that run. The generated private key was not committed or uploaded.
 - The available GitHub API context cannot read secret values. The latest artifact metadata is direct evidence that the stable secret was not supplied to that build; it is not evidence that a value can be recovered here.
 - A certificate fingerprint is public evidence only. It cannot reconstruct the private signing key.
-- The latest successful downloadable artifact from run `37250859951` is separately signed with another ephemeral certificate: `7837cb33341fea57258cab7a81fce1571222d6a10f58a8642a1f78d2696c8ac4`, confirming that validation builds are not a stable upgrade chain. Its APK SHA-256 is `6d009183ae9eba02f204ad9d5db695392bf2fd60e8dacbd549ca001887922141`; artifact ID is `11320233030`.
+- The latest successful downloadable artifact from run `37251513701` is separately signed with another ephemeral certificate: `cebe4b98f2750d468c8bbd86028a6ddff9fe2968c59d13e633db0ee57aaf595c`, confirming that validation builds are not a stable upgrade chain. Its APK SHA-256 is `b46649f4d7738f5c1044e2a3e8880875b311d4160ed3b4821fe11aba2bebef6c`; artifact ID is `11320969203`.
 
 The exact private key for the installed ephemeral artifact is therefore **not recoverable from this workspace or the APK**. Do not print, paste, or commit any private key material.
 
 ## Latest hosted signing result
 
-Run `37250859951` packaged and uploaded an installable EXP APK, but its metadata recorded `signing_key_source=ephemeral-validation-key`. The hosted signing step explicitly recorded `stable_signing=not_configured` because `KX_EXP_KEYSTORE_B64` was absent; it did not attempt consecutive-build comparison or `adb install -r` upgrade proof. The gated release job was skipped. This is an explicit AC5 non-verification, not a pass.
+Run `37251513701` packaged and uploaded an installable EXP APK, but its metadata recorded `signing_key_source=ephemeral-validation-key`. The hosted signing step explicitly recorded `stable_signing=not_configured` because `KX_EXP_KEYSTORE_B64` was absent; it did not attempt consecutive-build comparison or `adb install -r` upgrade proof. The gated release job was skipped. This is an explicit AC5 non-verification, not a pass.
 
 ## Compatibility target and options
 

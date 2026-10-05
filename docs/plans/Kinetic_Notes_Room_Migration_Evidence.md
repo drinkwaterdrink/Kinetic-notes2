@@ -34,15 +34,15 @@ The fixture is deliberately labeled as reconstructed evidence. It does not prove
 
 - Run `37245894202` passed Android-test compilation and emulator-image preparation but recorded a `/dev/kvm` permission blocker. Migration was correctly skipped and the mandatory gate failed.
 - Run `37248303361` reached the emulator and genuine instrumentation after the KVM setup correction, but the migration phase exposed a headless KSP 2.3.5 `ApplicationManager.getApplication()` failure. It did not pass AC4.
-- The project pinned KSP 2.3.4 and added the reconstructed v2 fixture asset. Run `37250236522` then passed all mandatory phases: Android-test compilation; the documented KVM udev rule, reload/trigger, read/write check, and `emulator -accel-check`; emulator startup; genuine `NoteDatabaseMigrationTest` execution; cleanup; and mandatory enforcement.
-- The successful run's diagnostic artifact is `11320434276`: `https://github.com/drinkwaterdrink/Kinetic-notes2/actions/runs/37250236522/artifacts/11320434276`.
+- The project pinned KSP 2.3.4 and added the reconstructed v2 fixture asset. Run `37251513701` then passed all mandatory phases: Android-test compilation; the documented KVM udev rule, reload/trigger, read/write check, and `emulator -accel-check`; emulator startup; genuine `NoteDatabaseMigrationTest` execution; cleanup; and mandatory enforcement.
+- The successful run's diagnostic artifact is `11320179762`: `https://github.com/drinkwaterdrink/Kinetic-notes2/actions/runs/37251513701/artifacts/11320179762`.
 
 ## Verification status
 
 - Room schema generation is configured with `room.schemaLocation`.
 - The checked-in reconstructed v2 input and generated current v3 schema are supplied to Android-test assets from `app/schemas`.
 - The migration test is mandatory in the CI workflow.
-- **AC4 is passed for the bounded I-001 fixture and migration path:** hosted run `37250236522` genuinely executed and passed the 2→3 assertions. This does not convert the reconstructed v2 input into authenticated historical production evidence.
+- **AC4 is passed for the bounded I-001 fixture and migration path:** hosted run `37251513701` genuinely executed and passed the 2→3 assertions. This does not convert the reconstructed v2 input into authenticated historical production evidence.
 - Supported installed versions remain explicitly enumerated above; v1 and earlier are compatibility blockers.
 
 A genuine historical v2 schema can still be promoted to stronger evidence only if it is recovered from a trusted repository artifact, a known-good user database/export, or another authenticated source. No such artifact was available in this packet.
