@@ -35,6 +35,16 @@ class GeminiServiceTruthfulnessTest {
     }
 
     @Test
+    fun unauthorized401IsNotConvertedIntoSuccess() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(401))
+
+        val result = service().generateContent("hello")
+
+        assertTrue(result.isFailure)
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
     fun httpFailureIsNotConvertedIntoSuccess() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(503))
 
@@ -42,6 +52,23 @@ class GeminiServiceTruthfulnessTest {
 
         assertTrue(result.isFailure)
         assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun networkFailureIsNotConvertedIntoSuccess() = runBlocking {
+        val service = GeminiService(
+            client = OkHttpClient.Builder()
+                .connectTimeout(250, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .readTimeout(250, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .writeTimeout(250, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .build(),
+            apiKeyProvider = { "test-key" },
+            endpoint = "http://127.0.0.1:1/generateContent"
+        )
+
+        val result = service.generateContent("hello")
+
+        assertTrue(result.isFailure)
     }
 
     @Test

@@ -162,11 +162,32 @@ jobs:
             --stacktrace --no-configuration-cache --no-daemon --console=plain \
             2>&1 | tee app/build/ci-instrumentation/android-test-compilation.log
 
+      # GitHub's documented hardware-accelerated Android setup. The udev rule is intentionally
+      # applied on every hosted runner before checking /dev/kvm; no emulator test is allowed to
+      # proceed on an unaccelerated x86_64 host.
+      - name: Enable KVM group permissions
+        id: kvm_permissions
+        if: steps.android_test_compile.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          mkdir -p app/build/ci-instrumentation
+          {
+            echo "phase=kvm-permission-setup"
+            date -u
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+            sudo udevadm control --reload-rules
+            sudo udevadm trigger --name-match=kvm
+            echo "udev_rule=/etc/udev/rules.d/99-kvm4all.rules"
+            ls -l /dev/kvm
+            id
+          } 2>&1 | tee app/build/ci-instrumentation/kvm-permission-setup.log
+
       # Use explicit emulator lifecycle steps so startup output is captured as an artifact
       # instead of being trapped in the action's step log when boot fails.
       - name: Prepare Android emulator image
         id: emulator_image
-        if: steps.android_test_compile.outcome == 'success'
+        if: steps.android_test_compile.outcome == 'success' && steps.kvm_permissions.outcome == 'success'
         run: |
           set +e
           mkdir -p app/build/ci-instrumentation
@@ -192,9 +213,32 @@ jobs:
           } > app/build/ci-instrumentation/emulator-image-preparation.log 2>&1
           cat app/build/ci-instrumentation/emulator-image-preparation.log
 
+      - name: Verify KVM access and emulator acceleration
+        id: kvm_verify
+        if: always() && steps.android_test_compile.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          mkdir -p app/build/ci-instrumentation
+          {
+            echo "phase=kvm-access-and-acceleration-verification"
+            date -u
+            if [ "${{ steps.kvm_permissions.outcome }}" != "success" ]; then
+              echo "KVM permission setup did not pass: ${{ steps.kvm_permissions.outcome }}"
+              exit 1
+            fi
+            ls -l /dev/kvm
+            test -r /dev/kvm
+            test -w /dev/kvm
+            "$ANDROID_HOME/emulator/emulator" -accel-check
+            acceleration_status=$?
+            echo "emulator_accel_check_status=$acceleration_status"
+            exit "$acceleration_status"
+          } 2>&1 | tee app/build/ci-instrumentation/kvm-access-and-acceleration.log
+
       - name: Start Android emulator with diagnostics
         id: emulator_start
-        if: steps.emulator_image.outcome == 'success'
+        if: steps.emulator_image.outcome == 'success' && steps.kvm_verify.outcome == 'success'
         run: |
           set +e
           mkdir -p app/build/ci-instrumentation
@@ -242,6 +286,59 @@ jobs:
             echo "Emulator did not report sys.boot_completed=1 within 300 seconds." >> "$log"
             exit 1
           fi
+          exit 0
+
+      # When the stable secret is configured, prove both certificate continuity and an
+      # in-place update on this disposable emulator. Without the secret this remains an
+      # explicit, non-passing skip; ephemeral builds must never be treated as upgrades.
+      - name: Verify stable signing and disposable upgrade
+        id: signing_upgrade
+        if: always() && steps.emulator_start.outcome == 'success'
+        continue-on-error: true
+        env:
+          KX_EXP_KEYSTORE_B64: ${{ secrets.KX_EXP_KEYSTORE_B64 }}
+        run: |
+          set +e
+          mkdir -p app/build/ci-instrumentation
+          log=app/build/ci-instrumentation/signing-upgrade.log
+          : > "$log"
+          if [ -z "$KX_EXP_KEYSTORE_B64" ]; then
+            echo "stable_signing=not_configured" | tee "$log"
+            echo "No stable signing secret was supplied; upgrade proof was not attempted." | tee -a "$log"
+            exit 0
+          fi
+          apk_one=app/build/outputs/apk/debug/app-debug.apk
+          apk_two=app/build/ci-instrumentation/app-debug-consecutive.apk
+          apksigner_bin=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          adb_bin="$ANDROID_HOME/platform-tools/adb"
+          cp "$apk_one" app/build/ci-instrumentation/app-debug-first.apk
+          ./gradlew :app:assembleDebug --rerun-tasks --stacktrace --no-configuration-cache --no-daemon --console=plain \
+            >> "$log" 2>&1
+          build_two_status=$?
+          cp "$apk_one" "$apk_two"
+          first_fingerprint=$("$apksigner_bin" verify --print-certs app/build/ci-instrumentation/app-debug-first.apk | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
+          second_fingerprint=$("$apksigner_bin" verify --print-certs "$apk_two" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
+          {
+            echo "stable_signing=required"
+            echo "consecutive_build_status=$build_two_status"
+            echo "first_certificate_sha256=$first_fingerprint"
+            echo "second_certificate_sha256=$second_fingerprint"
+          } | tee -a "$log"
+          if [ "$build_two_status" -ne 0 ] || [ -z "$first_fingerprint" ] || [ "$first_fingerprint" != "$second_fingerprint" ]; then
+            echo "Stable signing continuity failed." | tee -a "$log"
+            exit 1
+          fi
+          "$adb_bin" install -r app/build/ci-instrumentation/app-debug-first.apk >> "$log" 2>&1
+          first_install_status=$?
+          "$adb_bin" install -r "$apk_two" >> "$log" 2>&1
+          second_install_status=$?
+          echo "first_install_status=$first_install_status" | tee -a "$log"
+          echo "second_install_status=$second_install_status" | tee -a "$log"
+          if [ "$first_install_status" -ne 0 ] || [ "$second_install_status" -ne 0 ]; then
+            echo "Stable-signed disposable upgrade failed; do not recommend an in-place update." | tee -a "$log"
+            exit 1
+          fi
+          echo "stable_signed_disposable_upgrade=passed" | tee -a "$log"
           exit 0
 
       - name: Instrumented migration and persistence checks
@@ -296,13 +393,20 @@ jobs:
           mkdir -p app/build/ci-instrumentation
           {
             echo "android_test_compilation_outcome=${{ steps.android_test_compile.outcome }}"
+            echo "kvm_permissions_outcome=${{ steps.kvm_permissions.outcome }}"
             echo "emulator_image_outcome=${{ steps.emulator_image.outcome }}"
+            echo "kvm_verify_outcome=${{ steps.kvm_verify.outcome }}"
             echo "emulator_start_outcome=${{ steps.emulator_start.outcome }}"
+            echo "signing_upgrade_outcome=${{ steps.signing_upgrade.outcome }}"
             echo "instrumentation_outcome=${{ steps.instrumentation.outcome }}"
             if [ "${{ steps.android_test_compile.outcome }}" != "success" ]; then
               echo "phase_logs=absent; Android-test compilation failed, so emulator execution was not attempted"
+            elif [ "${{ steps.kvm_permissions.outcome }}" != "success" ]; then
+              echo "phase_logs=present; documented KVM permission setup failed"
             elif [ "${{ steps.emulator_image.outcome }}" != "success" ]; then
               echo "phase_logs=absent; emulator image preparation failed"
+            elif [ "${{ steps.kvm_verify.outcome }}" != "success" ]; then
+              echo "phase_logs=present; KVM access/acceleration verification failed"
             elif [ "${{ steps.emulator_start.outcome }}" != "success" ]; then
               echo "phase_logs=present; emulator startup failed before instrumentation"
             elif [ -f app/build/ci-instrumentation/migration-test-execution.log ]; then
@@ -332,21 +436,38 @@ jobs:
 
       - name: Enforce mandatory Android-test phases
         if: always()
+        env:
+          KX_EXP_KEYSTORE_B64: ${{ secrets.KX_EXP_KEYSTORE_B64 }}
         run: |
           compile_outcome="${{ steps.android_test_compile.outcome }}"
-          instrumentation_outcome="${{ steps.instrumentation.outcome }}"
+          kvm_setup_outcome="${{ steps.kvm_permissions.outcome }}"
           image_outcome="${{ steps.emulator_image.outcome }}"
+          kvm_verify_outcome="${{ steps.kvm_verify.outcome }}"
           emulator_outcome="${{ steps.emulator_start.outcome }}"
+          signing_upgrade_outcome="${{ steps.signing_upgrade.outcome }}"
+          instrumentation_outcome="${{ steps.instrumentation.outcome }}"
           if [ "$compile_outcome" != "success" ]; then
             echo "Android-test compilation did not pass: $compile_outcome"
+            exit 1
+          fi
+          if [ "$kvm_setup_outcome" != "success" ]; then
+            echo "KVM permission setup did not pass: $kvm_setup_outcome"
             exit 1
           fi
           if [ "$image_outcome" != "success" ]; then
             echo "Emulator image preparation did not pass: $image_outcome"
             exit 1
           fi
+          if [ "$kvm_verify_outcome" != "success" ]; then
+            echo "KVM access/acceleration verification did not pass: $kvm_verify_outcome"
+            exit 1
+          fi
           if [ "$emulator_outcome" != "success" ]; then
             echo "Emulator startup did not pass: $emulator_outcome"
+            exit 1
+          fi
+          if [ -n "$KX_EXP_KEYSTORE_B64" ] && [ "$signing_upgrade_outcome" != "success" ]; then
+            echo "Stable signing continuity/upgrade did not pass: $signing_upgrade_outcome"
             exit 1
           fi
           if [ "$instrumentation_outcome" != "success" ]; then

@@ -32,3 +32,29 @@ Data-preserving options are:
 4. Test an unrelated future build on a separate test device or an installation that does not contain the user's data. Do not replace the current installation as a shortcut.
 
 Changing the application ID would avoid the signature check but would create a separate data store and is not an acceptable in-place compatibility solution.
+
+## Persistent-key preparation runbook
+
+No private key is generated in this repository or printed in chat. If the original key cannot be recovered, an authorized maintainer can generate a replacement on a trusted workstation and upload it directly to GitHub Actions without committing the keystore:
+
+```bash
+set -euo pipefail
+umask 077
+workdir="$(mktemp -d)"
+trap 'rm -rf "$workdir"' EXIT
+keytool -genkeypair -v \
+  -keystore "$workdir/exp-signing.jks" \
+  -storepass android \
+  -keypass android \
+  -alias androiddebugkey \
+  -keyalg RSA -keysize 2048 -validity 10000 \
+  -dname 'CN=Kinetic Canvas EXP,O=Kinetic Notes,C=US'
+base64 -w0 "$workdir/exp-signing.jks" > "$workdir/KX_EXP_KEYSTORE_B64"
+chmod 600 "$workdir/KX_EXP_KEYSTORE_B64"
+# Configure the file as the repository Actions secret; do not echo it.
+gh secret set KX_EXP_KEYSTORE_B64 --repo drinkwaterdrink/Kinetic-notes2 < "$workdir/KX_EXP_KEYSTORE_B64"
+```
+
+This uses the existing `debugConfig` contract (`androiddebugkey` / `android` passwords) so no secret value is placed in Gradle files. The keystore file itself is protected by the GitHub Actions secret; the generated file and temporary base64 file are deleted by the trap. The original key should always be preferred when available.
+
+After the secret is configured, CI's gated signing step must produce two consecutive fingerprints that match and install both APKs with `adb install -r` on the disposable emulator. Until that run succeeds, AC5 remains **Not verified** and no update recommendation is safe.
