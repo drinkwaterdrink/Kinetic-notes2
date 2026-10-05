@@ -138,6 +138,13 @@ jobs:
               echo "update_compatibility=not safe to assume an update of an existing installation"
             fi
           } | tee "dist/Kinetic Canvas EXP.metadata.txt"
+          metadata_summary=$(tr '\n' ' ' < "dist/Kinetic Canvas EXP.metadata.txt")
+          echo "::notice title=EXP artifact metadata::$metadata_summary"
+          {
+            echo "### EXP artifact metadata"
+            echo
+            cat "dist/Kinetic Canvas EXP.metadata.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # APK delivery is separate from reports and never commits a binary to the source branch.
       - name: Upload EXP APK artifact
